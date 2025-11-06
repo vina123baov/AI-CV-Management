@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Mail, Lock, AlertCircle } from "lucide-react";
+import { Loader2, Mail, Lock, AlertCircle, Shield } from "lucide-react";
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -82,11 +82,13 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="w-full max-w-md">
+        {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-blue-600 mb-2">Recruit AI</h1>
           <p className="text-gray-600">Hệ thống quản lý tuyển dụng</p>
         </div>
 
+        {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Đăng nhập</h2>
 
@@ -154,15 +156,35 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-          <div className="mt-6 text-center text-sm">
-            <span className="text-gray-600">Chưa có tài khoản? </span>
-            <Link to="/register" className="text-blue-600 font-semibold hover:underline">
-              Đăng ký ngay
-            </Link>
+          {/* BỎ LINK ĐĂNG KÝ - Thay bằng thông báo liên hệ Admin */}
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">Chưa có tài khoản?</span>
+              </div>
+            </div>
+            
+            <div className="mt-4 text-center p-4 bg-blue-50 rounded-lg border border-blue-100">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Shield className="h-4 w-4 text-blue-600" />
+                <p className="text-sm font-medium text-blue-900">
+                  Tài khoản do Admin cấp
+                </p>
+              </div>
+              <p className="text-xs text-blue-700">
+                Vui lòng liên hệ với Quản trị viên hoặc bộ phận HR để được cấp quyền truy cập vào hệ thống
+              </p>
+            </div>
           </div>
         </div>
 
-        <p className="text-center text-sm text-gray-500 mt-6">© 2025 Recruit AI. All rights reserved.</p>
+        {/* Footer */}
+        <p className="text-center text-sm text-gray-500 mt-6">
+          © 2025 Recruit AI. All rights reserved.
+        </p>
       </div>
     </div>
   );

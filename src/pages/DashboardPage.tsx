@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { User, Briefcase, ClipboardList, Clock, RefreshCw, Database, Flame, MessageCircle, X, Send, Sparkles, Key, Eye, EyeOff, Check, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { User, Briefcase, ClipboardList, RefreshCw, Database, Flame, MessageCircle, X, Send, Sparkles, Key, Eye, EyeOff, Check, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
@@ -241,7 +241,7 @@ export function DashboardPage() {
         {t('dashboard.realTimeData')}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('dashboard.stats.totalCV')}</CardTitle>
@@ -278,16 +278,6 @@ export function DashboardPage() {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {renderChangeIndicator(stats.interviewingChange)} {t('dashboard.stats.comparedToLastMonth')}
             </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t('dashboard.stats.avgTime')}</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground"/>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">N/A</div>
           </CardContent>
         </Card>
       </div>
