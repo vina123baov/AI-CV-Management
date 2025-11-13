@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Plus, Mail, Send, TrendingUp, Clock, FileText, Eye, Filter, Sparkles, Users } from 'lucide-react'
+import { Search, Plus, Mail, Send, TrendingUp, Clock, FileText, Eye, Filter, Sparkles, Users, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,10 +35,10 @@ interface EmailTemplate {
   subject: string
   body: string
   category_id: string
-  variables: string[]
-  is_default: boolean
-  usage_count: number
-  created_at: string
+  variables?: string[]
+  is_default?: boolean
+  usage_count?: number
+  created_at?: string
   email_categories: EmailCategory | null
 }
 
@@ -70,6 +70,11 @@ export function EmailManagementPage() {
     waitingToSend: 0,
     totalTemplates: 0
   })
+  const [isApiKeyConfigured, setIsApiKeyConfigured] = useState(false)
+  const [apiKey, setApiKey] = useState('')
+  const [senderName, setSenderName] = useState('Recruit AI')
+  const [isRefreshingApiKey, setIsRefreshingApiKey] = useState(false)
+  const [defaultFrom, setDefaultFrom] = useState('onboarding@resend.dev')
 
   const [isComposeOpen, setIsComposeOpen] = useState(false)
   const [isTemplateOpen, setIsTemplateOpen] = useState(false)
@@ -78,13 +83,16 @@ export function EmailManagementPage() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [emailSendingStatus, setEmailSendingStatus] = useState<{ [key: string]: 'idle' | 'sending' | 'success' | 'error' }>({})
 
   const [composeForm, setComposeForm] = useState({
     candidate_id: '',
     template_id: '',
     subject: '',
     body: '',
-    scheduled_at: ''
+    scheduled_at: '',
+    cc: '',
+    priority: 'normal'
   })
 
   const [templateForm, setTemplateForm] = useState({
@@ -102,15 +110,93 @@ export function EmailManagementPage() {
 
   useEffect(() => {
     fetchData()
+    checkApiKeyStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'email_settings_updated') {
+        checkApiKeyStatus()
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    const intervalId = setInterval(() => checkApiKeyStatus(), 30000)
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(intervalId)
+    }
+  }, [])
+
+  const checkApiKeyStatus = async () => {
+    try {
+      setIsRefreshingApiKey(true)
+      // check localStorage first
+      const localApiKey = localStorage.getItem('resend_api_key')
+      if (localApiKey && localApiKey !== 'EMPTY') {
+        setIsApiKeyConfigured(true)
+        setApiKey(localApiKey)
+        // also try to fetch from-email if saved
+        const localFrom = localStorage.getItem('resend_from_email')
+        if (localFrom) setDefaultFrom(localFrom)
+        const localSenderName = localStorage.getItem('resend_sender_name')
+        if (localSenderName) setSenderName(localSenderName)
+        setIsRefreshingApiKey(false)
+        return
+      }
+
+      // fetch settings from DB
+      try {
+        const { data, error } = await supabase
+          .from('cv_email_settings')
+          .select('resend_api_key, sending_email, sender_name')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .single()
+        
+        if (error) {
+          console.error('Lỗi khi đọc email settings:', error)
+        } else if (data) {
+          if (data.resend_api_key && data.resend_api_key !== 'EMPTY') {
+            setIsApiKeyConfigured(true)
+            setApiKey(data.resend_api_key)
+            localStorage.setItem('resend_api_key', data.resend_api_key)
+          } else {
+            setIsApiKeyConfigured(false)
+          }
+          if (data.sending_email) {
+            setDefaultFrom(data.sending_email)
+            localStorage.setItem('resend_from_email', data.sending_email)
+          }
+          if (data.sender_name) {
+            setSenderName(data.sender_name)
+            localStorage.setItem('resend_sender_name', data.sender_name)
+          }
+        } else {
+          setIsApiKeyConfigured(false)
+        }
+      } catch (err) {
+        console.error('Error reading settings table', err)
+        setIsApiKeyConfigured(false)
+      }
+    } catch (err) {
+      console.error(err)
+      setIsApiKeyConfigured(false)
+    } finally {
+      setIsRefreshingApiKey(false)
+    }
+  }
+
+  const forceRefreshApiKey = async () => {
+    localStorage.removeItem('resend_api_key')
+    localStorage.removeItem('resend_from_email')
+    localStorage.removeItem('resend_sender_name')
+    await checkApiKeyStatus()
+  }
 
   const fetchData = async () => {
     setLoading(true)
-    await Promise.all([
-      fetchTemplates(),
-      fetchCategories(),
-      fetchStats()
-    ])
+    await Promise.all([fetchTemplates(), fetchCategories(), fetchStats()])
     setLoading(false)
   }
 
@@ -130,15 +216,15 @@ export function EmailManagementPage() {
         .order('created_at', { ascending: false })
 
       if (data) {
-        const transformedData = data.map(item => ({
+        const transformedData = data.map((item: any) => ({
           ...item,
-          email_categories: item.cv_email_categories
+          email_categories: item.cv_email_categories || null
         }))
         setTemplates(transformedData as EmailTemplate[])
       }
-      if (error) console.error('Error fetching templates:', error)
+      if (error) console.error('Lỗi khi tải templates:', error)
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Lỗi:', error)
     }
   }
 
@@ -150,9 +236,9 @@ export function EmailManagementPage() {
         .order('name')
 
       if (data) setCategories(data as EmailCategory[])
-      if (error) console.error('Error fetching categories:', error)
+      if (error) console.error('Lỗi khi tải categories:', error)
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Lỗi:', error)
     }
   }
 
@@ -178,7 +264,7 @@ export function EmailManagementPage() {
         .eq('is_active', true)
 
       const totalSent = sentCount || 0
-      const uniqueOpens = new Set(eventsData?.filter(e => e.event_type === 'opened').map(e => e.email_id)).size
+      const uniqueOpens = new Set(eventsData?.filter((e: any) => e.event_type === 'opened').map((e: any) => e.email_id)).size
       const openRate = totalSent > 0 ? (uniqueOpens / totalSent) * 100 : 0
 
       setStats({
@@ -188,7 +274,166 @@ export function EmailManagementPage() {
         totalTemplates: templatesCount || 0
       })
     } catch (error) {
-      console.error('Error fetching stats:', error)
+      console.error('Lỗi khi tải thống kê:', error)
+    }
+  }
+
+  const formatEmailContent = (content: string, subject?: string) => {
+    // Improved formatting for better readability: cleaner layout, better typography, responsive design
+    const safeContent = content
+      .replace(/\n/g, '<br/>')
+      .replace(/\{\{([^}]+)\}\}/g, '<span style="color: #3b82f6; font-weight: 500;">{{$1}}</span>'); // Highlight variables for preview
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${subject ?? 'Recruit AI'}</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7fa; color: #1f2937; line-height: 1.6; font-size: 16px; }
+    .wrap { width: 100%; max-width: 640px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); }
+    .header { padding: 32px 40px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 16px; background: #f9fafb; }
+    .logo { width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #2563eb); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 700; }
+    .title { font-size: 20px; font-weight: 600; color: #111827; }
+    .subtitle { font-size: 13px; color: #6b7280; margin-top: 2px; }
+    .content { padding: 40px; color: #374151; }
+    .content p { margin: 0 0 16px; }
+    .content strong { font-weight: 600; color: #1f2937; }
+    .button { display: inline-block; margin: 24px 0; padding: 12px 24px; border-radius: 8px; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; text-decoration: none; font-weight: 500; font-size: 15px; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15); transition: transform 0.2s; }
+    .button:hover { transform: translateY(-1px); }
+    .footer { padding: 24px 40px; font-size: 13px; color: #6b7280; border-top: 1px solid #e5e7eb; text-align: center; background: #f9fafb; }
+    .footer a { color: #3b82f6; text-decoration: none; }
+    @media (max-width: 640px) {
+      .wrap { margin: 20px 16px; border-radius: 8px; }
+      .header { padding: 24px 32px; }
+      .content { padding: 32px; font-size: 15px; }
+      .footer { padding: 20px 32px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="logo">RA</div>
+      <div>
+        <div class="title">Recruit AI</div>
+        <div class="subtitle">Hệ thống gửi email tuyển dụng chuyên nghiệp</div>
+      </div>
+    </div>
+    <div class="content">
+      ${safeContent}
+    </div>
+    <div class="footer">
+      Đây là email tự động từ Recruit AI. Vui lòng không trả lời email này.<br/>
+      <a href="https://recruit-ai.com">Truy cập trang web</a> | <a href="https://recruit-ai.com/unsubscribe">Hủy đăng ký</a>
+    </div>
+  </div>
+</body>
+</html>`
+  }
+
+  interface ResendEmailPayload {
+    from: string;
+    to: string[];
+    subject: string;
+    html: string;
+    text?: string;
+    cc?: string[];
+  }
+
+  // helper: resolve recipient(s) - input could be emails list or candidate id(s)
+  const resolveRecipients = async (candidateField: string) : Promise<string[] | null> => {
+    if (!candidateField) return null
+    const parts = candidateField.split(',').map(p => p.trim()).filter(Boolean)
+    // if looks like email (contains @) treat as emails
+    if (parts.every(p => p.includes('@'))) return parts
+    // otherwise try to lookup by id(s) in cv_candidates table
+    try {
+      const { data, error } = await supabase
+        .from('cv_candidates')
+        .select('email')
+        .in('id', parts)
+      if (error) {
+        console.warn('Không thể tìm candidate email:', error)
+        return null
+      }
+      if (data && data.length > 0) {
+        const emails = data.map((r: any) => r.email).filter(Boolean)
+        return emails.length ? emails : null
+      }
+      return null
+    } catch (e) {
+      console.error(e)
+      return null
+    }
+  }
+
+  const sendEmail = async (toField: string, subject: string, body: string, cc?: string) => {
+    // ensure API key
+    if (!isApiKeyConfigured || !apiKey) {
+      await forceRefreshApiKey()
+      if (!isApiKeyConfigured || !apiKey) {
+        alert('Vui lòng cấu hình Resend API key trước khi gửi email.')
+        return { success: false, error: 'API key not configured' }
+      }
+    }
+
+    setIsSaving(true)
+    try {
+      const recipients = await resolveRecipients(toField)
+      if (!recipients || recipients.length === 0) {
+        return { success: false, error: 'Không có email hợp lệ để gửi' }
+      }
+
+      const formattedHtml = formatEmailContent(body, subject)
+      const textFallback = body.replace(/\{\{|\}\}/g, '') // simple plaintext fallback
+
+      const payload: ResendEmailPayload = {
+        from: `${senderName} <${defaultFrom}>`,
+        to: recipients,
+        subject,
+        html: formattedHtml,
+        text: textFallback
+      }
+      if (cc && cc.trim()) {
+        const ccList = cc.split(',').map(s => s.trim()).filter(Boolean)
+        if (ccList.length) payload.cc = ccList
+      }
+
+      const response = await fetch('/proxy/resend/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error((err as any).message || 'Failed to send')
+      }
+      const data = await response.json().catch(() => ({}))
+
+      // record to DB
+      await supabase.from('cv_emails').insert([{
+        candidate_id: toField,
+        template_id: composeForm.template_id || null,
+        subject,
+        body,
+        composition_type: 'manual',
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        external_id: (data as any).id || null
+      }])
+
+      return { success: true, data }
+    } catch (error: any) {
+      console.error('Lỗi khi gửi email:', error)
+      return { success: false, error: error?.message || String(error) }
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -197,32 +442,54 @@ export function EmailManagementPage() {
       alert('Vui lòng điền đầy đủ thông tin')
       return
     }
-
-    setIsSaving(true)
-
+    setEmailSendingStatus({ ...emailSendingStatus, compose: 'sending' })
     try {
-      const { error } = await supabase
-        .from('cv_emails')
-        .insert([{
-          candidate_id: composeForm.candidate_id,
-          template_id: composeForm.template_id || null,
-          subject: composeForm.subject,
-          body: composeForm.body,
-          composition_type: 'manual',
-          status: composeForm.scheduled_at ? 'scheduled' : 'pending',
-          scheduled_at: composeForm.scheduled_at || null
-        }])
-
-      if (error) throw error
-
-      alert('✓ Email đã được thêm vào hàng đợi!')
-      setIsComposeOpen(false)
-      resetComposeForm()
-      fetchStats()
-    } catch (error: any) {
-      alert('Có lỗi khi gửi email: ' + error.message)
+      const result = await sendEmail(composeForm.candidate_id, composeForm.subject, composeForm.body, composeForm.cc)
+      if (result.success) {
+        setEmailSendingStatus({ ...emailSendingStatus, compose: 'success' })
+        alert('✓ Email đã được gửi thành công!')
+        setIsComposeOpen(false)
+        resetComposeForm()
+        fetchStats()
+      } else {
+        setEmailSendingStatus({ ...emailSendingStatus, compose: 'error' })
+        alert('Có lỗi khi gửi email: ' + result.error)
+      }
+    } catch (err: any) {
+      setEmailSendingStatus({ ...emailSendingStatus, compose: 'error' })
+      alert('Có lỗi khi gửi email: ' + err.message)
     } finally {
-      setIsSaving(false)
+      setTimeout(() => setEmailSendingStatus(prev => ({ ...prev, compose: 'idle' })), 3000)
+    }
+  }
+
+  const handleTestEmail = async () => {
+    if (!testEmailForm.test_email) {
+      alert('Vui lòng nhập email nhận thử nghiệm')
+      return
+    }
+    const template = templates.find(t => t.id === testEmailForm.template_id)
+    if (!template) {
+      alert('Vui lòng chọn một template')
+      return
+    }
+    setEmailSendingStatus({ ...emailSendingStatus, test: 'sending' })
+    try {
+      const result = await sendEmail(testEmailForm.test_email, `[TEST] ${template.subject}`, template.body)
+      if (result.success) {
+        setEmailSendingStatus({ ...emailSendingStatus, test: 'success' })
+        alert('✓ Email thử nghiệm đã được gửi thành công!')
+        setIsTestEmailOpen(false)
+        resetTestEmailForm()
+      } else {
+        setEmailSendingStatus({ ...emailSendingStatus, test: 'error' })
+        alert('Có lỗi khi gửi email thử nghiệm: ' + result.error)
+      }
+    } catch (err: any) {
+      setEmailSendingStatus({ ...emailSendingStatus, test: 'error' })
+      alert('Có lỗi khi gửi email thử nghiệm: ' + err.message)
+    } finally {
+      setTimeout(() => setEmailSendingStatus(prev => ({ ...prev, test: 'idle' })), 3000)
     }
   }
 
@@ -231,13 +498,10 @@ export function EmailManagementPage() {
       alert('Vui lòng điền đầy đủ thông tin template')
       return
     }
-
     setIsSaving(true)
-
     try {
       const variableMatches = templateForm.body.match(/\{\{(\w+)\}\}/g)
       const variables = variableMatches ? variableMatches.map(v => v.replace(/[{}]/g, '')) : []
-
       const { data, error } = await supabase
         .from('cv_email_templates')
         .insert([{
@@ -245,7 +509,7 @@ export function EmailManagementPage() {
           subject: templateForm.subject,
           body: templateForm.body,
           category_id: templateForm.category_id,
-          variables: variables,
+          variables,
           is_default: templateForm.is_default,
           is_active: true,
           usage_count: 0
@@ -257,22 +521,17 @@ export function EmailManagementPage() {
             name
           )
         `)
-
       if (error) throw error
-
       if (data && data[0]) {
-        const transformedData = {
-          ...data[0],
-          email_categories: data[0].cv_email_categories
-        }
-        setTemplates(prev => [transformedData as EmailTemplate, ...prev])
+        const transformed = { ...data[0], email_categories: data[0].cv_email_categories || null }
+        setTemplates(prev => [transformed as EmailTemplate, ...prev])
         alert('✓ Tạo template thành công!')
         setIsTemplateOpen(false)
         resetTemplateForm()
         fetchStats()
       }
-    } catch (error: any) {
-      alert('Có lỗi khi tạo template: ' + error.message)
+    } catch (err: any) {
+      alert('Có lỗi khi tạo template: ' + err.message)
     } finally {
       setIsSaving(false)
     }
@@ -294,7 +553,9 @@ export function EmailManagementPage() {
       template_id: '',
       subject: '',
       body: '',
-      scheduled_at: ''
+      scheduled_at: '',
+      cc: '',
+      priority: 'normal'
     })
   }
 
@@ -308,9 +569,16 @@ export function EmailManagementPage() {
     })
   }
 
+  const resetTestEmailForm = () => {
+    setTestEmailForm({
+      test_email: '',
+      template_id: ''
+    })
+  }
+
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         t.subject.toLowerCase().includes(searchQuery.toLowerCase())
+      t.subject.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === 'all' || t.category_id === selectedCategory
     return matchesSearch && matchesCategory
   })
@@ -349,7 +617,7 @@ export function EmailManagementPage() {
             <Plus className="mr-2 h-4 w-4" />
             Tạo Template
           </Button>
-          <Button 
+          <Button
             className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
             onClick={() => setIsComposeOpen(true)}
           >
@@ -359,21 +627,51 @@ export function EmailManagementPage() {
         </div>
       </div>
 
-      {/* Success Message */}
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-        <div className="text-green-600 mt-0.5">✓</div>
-        <div className="flex-1">
-          <p className="text-sm text-gray-700">
-            Đã tải thành công {stats.totalTemplates} mẫu email chuyên nghiệp với {categories.length} danh mục: 
-            {Object.entries(categoryCounts).map(([name, count], idx) => (
-              <span key={name}> {name} ({count}){idx < Object.keys(categoryCounts).length - 1 ? ',' : '.'}</span>
-            ))}
-          </p>
-          <p className="text-sm text-orange-600 mt-1">
-            <strong>Lưu ý:</strong> Để gửi email thực, vui lòng cấu hình Resend API key trong Cài đặt và kiểm tra cấu hình email.
-          </p>
+      {/* Success / Warning Message */}
+      {isApiKeyConfigured ? (
+        <div className="bg-green-50 border-green-200 border rounded-lg p-4 flex items-start gap-3">
+          <div className="text-green-600 mt-0.5">✓</div>
+          <div className="flex-1">
+            <p className="text-sm text-gray-700">
+              Đã tải thành công {stats.totalTemplates} mẫu email chuyên nghiệp với {categories.length} danh mục:
+              {Object.entries(categoryCounts).map(([name, count], idx) => (
+                <span key={name}> {name} ({count}){idx < Object.keys(categoryCounts).length - 1 ? ',' : '.'}</span>
+              ))}
+            </p>
+            <p className="text-sm text-green-600 mt-1">
+              <strong>API key đã được cấu hình.</strong> Bạn có thể gửi email ngay bây giờ.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-orange-50 border-orange-200 border rounded-lg p-4 flex items-start gap-3">
+          <div className="text-orange-600 mt-0.5">!</div>
+          <div className="flex-1 flex items-center justify-between">
+            <p className="text-sm text-orange-600 mt-1">
+              <strong>Lưu ý:</strong> Để gửi email thực, vui lòng cấu hình Resend API key trong Cài đặt và kiểm tra cấu hình email.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={forceRefreshApiKey}
+              disabled={isRefreshingApiKey}
+              className="ml-4"
+            >
+              {isRefreshingApiKey ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                  Đang kiểm tra...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Kiểm tra lại
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-4">
@@ -486,7 +784,7 @@ export function EmailManagementPage() {
             <div className="flex items-center gap-3">
               <div className="relative w-80">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <Input 
+                <Input
                   placeholder="Tìm kiếm templates..."
                   className="pl-10 bg-gray-100 border-0"
                   value={searchQuery}
@@ -550,15 +848,15 @@ export function EmailManagementPage() {
                         <Eye className="h-4 w-4" />
                       </Button>
                     </div>
-                    
+
                     <p className="text-sm text-gray-600 mb-4 line-clamp-2">{template.subject}</p>
-                    
+
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
                       <span>{template.variables?.length || 0} biến</span>
                       <span>Đã dùng {template.usage_count || 0} lần</span>
                     </div>
 
-                    <Button 
+                    <Button
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() => handleUseTemplate(template)}
                     >
@@ -586,7 +884,7 @@ export function EmailManagementPage() {
       )}
 
       {/* Compose Email Dialog */}
-      <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
+      <Dialog open={isComposeOpen} onOpenChange={(open) => { if (!open) setIsComposeOpen(false); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center gap-2">
@@ -594,12 +892,12 @@ export function EmailManagementPage() {
               <DialogTitle className="text-xl">Soạn Email</DialogTitle>
             </div>
             <p className="text-sm text-gray-500 mt-2">
-              Soạn và gửi email tuyển dụng với template hoặc nội dung tự tạo. Có thể gửi ngay, lên lịch gửi sau, hoặc lưu làm nháp.
+              Soạn và gửi email tuyển dụng với template hoặc nội dung tự tạo.
             </p>
           </DialogHeader>
 
           <div className="space-y-6 mt-6">
-            {/* Thông tin cơ bản */}
+            {/* Basic info */}
             <div>
               <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
                 <Users className="h-4 w-4" />
@@ -608,8 +906,8 @@ export function EmailManagementPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Người nhận *</label>
-                  <Input 
-                    placeholder="email1@example.com, email2@example.com"
+                  <Input
+                    placeholder="email1@example.com, email2@example.com  OR candidateId1,candidateId2"
                     className="bg-gray-50"
                     value={composeForm.candidate_id}
                     onChange={(e) => setComposeForm(prev => ({ ...prev, candidate_id: e.target.value }))}
@@ -617,7 +915,7 @@ export function EmailManagementPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Tiêu đề *</label>
-                  <Input 
+                  <Input
                     placeholder="Tiêu đề email"
                     className="bg-gray-50"
                     value={composeForm.subject}
@@ -629,14 +927,16 @@ export function EmailManagementPage() {
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">CC (Tùy chọn)</label>
-                  <Input 
+                  <Input
                     placeholder="cc1@example.com, cc2@example.com"
                     className="bg-gray-50"
+                    value={composeForm.cc}
+                    onChange={(e) => setComposeForm(prev => ({ ...prev, cc: e.target.value }))}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Độ ưu tiên</label>
-                  <Select defaultValue="normal">
+                  <Select value={composeForm.priority} onValueChange={(val) => setComposeForm(prev => ({ ...prev, priority: val }))}>
                     <SelectTrigger className="bg-gray-50">
                       <SelectValue placeholder="Bình thường" />
                     </SelectTrigger>
@@ -650,7 +950,7 @@ export function EmailManagementPage() {
               </div>
             </div>
 
-            {/* Chọn Template */}
+            {/* Choose Template */}
             <div className="border-t pt-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -677,7 +977,7 @@ export function EmailManagementPage() {
               ) : (
                 <div>
                   <div className="flex gap-2 mb-3">
-                    <Input 
+                    <Input
                       placeholder="Tìm template..."
                       className="flex-1 bg-gray-50"
                     />
@@ -715,32 +1015,53 @@ export function EmailManagementPage() {
               )}
             </div>
 
-            {/* Nội dung */}
-            {composeForm.body && (
-              <div className="border-t pt-6">
-                <label className="block text-sm font-medium mb-2">Nội dung email</label>
-                <Textarea 
-                  placeholder="Nội dung email sẽ được điền tự động từ template..."
-                  className="min-h-[200px] bg-gray-50"
-                  value={composeForm.body}
-                  onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
-                />
-              </div>
-            )}
+            {/* Body */}
+            <div className="border-t pt-6">
+              <label className="block text-sm font-medium mb-2">Nội dung email</label>
+              <Textarea
+                placeholder="Nội dung email sẽ được điền tự động từ template..."
+                className="min-h-[200px] bg-gray-50"
+                value={composeForm.body}
+                onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
+              />
+            </div>
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-4 border-t">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Users className="h-4 w-4" />
-                <span>0 người nhận</span>
+                <span>{composeForm.candidate_id ? composeForm.candidate_id.split(',').length : 0} người nhận</span>
               </div>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => { setIsComposeOpen(false); resetComposeForm(); }} disabled={isSaving}>
                   Hủy
                 </Button>
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleComposeSubmit} disabled={isSaving}>
-                  <Send className="mr-2 h-4 w-4" />
-                  {isSaving ? 'Đang gửi...' : 'Gửi Email'}
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleComposeSubmit}
+                  disabled={isSaving || emailSendingStatus.compose === 'sending'}
+                >
+                  {emailSendingStatus.compose === 'sending' ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Đang gửi...
+                    </>
+                  ) : emailSendingStatus.compose === 'success' ? (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Đã gửi
+                    </>
+                  ) : emailSendingStatus.compose === 'error' ? (
+                    <>
+                      <AlertCircle className="mr-2 h-4 w-4" />
+                      Gửi thất bại
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Gửi Email
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -749,7 +1070,7 @@ export function EmailManagementPage() {
       </Dialog>
 
       {/* Create Template Dialog */}
-      <Dialog open={isTemplateOpen} onOpenChange={setIsTemplateOpen}>
+      <Dialog open={isTemplateOpen} onOpenChange={(open) => { if (!open) setIsTemplateOpen(false); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">Tạo Email Template mới</DialogTitle>
@@ -761,7 +1082,7 @@ export function EmailManagementPage() {
           <div className="space-y-5 mt-6">
             <div>
               <label className="block text-sm font-semibold mb-2">Tên template</label>
-              <Input 
+              <Input
                 placeholder="VD: Mời phỏng vấn vòng 3"
                 className="bg-gray-50"
                 value={templateForm.name}
@@ -791,7 +1112,7 @@ export function EmailManagementPage() {
 
             <div>
               <label className="block text-sm font-semibold mb-2">Tiêu đề email</label>
-              <Input 
+              <Input
                 placeholder="VD: [{{companyName}}] Mời phỏng vấn - {{position}}"
                 className="bg-gray-50"
                 value={templateForm.subject}
@@ -801,7 +1122,7 @@ export function EmailManagementPage() {
 
             <div>
               <label className="block text-sm font-semibold mb-2">Nội dung email</label>
-              <Textarea 
+              <Textarea
                 placeholder="Nhập nội dung email... Sử dụng {{variableName}} để tạo biến động"
                 className="min-h-[250px] bg-gray-50 font-mono text-sm"
                 value={templateForm.body}
@@ -813,8 +1134,8 @@ export function EmailManagementPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 id="is_default"
                 checked={templateForm.is_default}
                 onChange={(e) => setTemplateForm(prev => ({ ...prev, is_default: e.target.checked }))}
@@ -837,7 +1158,7 @@ export function EmailManagementPage() {
       </Dialog>
 
       {/* View Template Dialog */}
-      <Dialog open={!!viewTemplate} onOpenChange={() => setViewTemplate(null)}>
+      <Dialog open={!!viewTemplate} onOpenChange={(open) => { if (!open) setViewTemplate(null); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{viewTemplate?.name}</DialogTitle>
@@ -866,7 +1187,7 @@ export function EmailManagementPage() {
               <div>
                 <label className="text-sm font-medium text-gray-500">Biến sử dụng</label>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {viewTemplate.variables?.length > 0 ? (
+                  {viewTemplate.variables && viewTemplate.variables.length > 0 ? (
                     viewTemplate.variables.map((v, idx) => (
                       <Badge key={idx} variant="outline" className="font-mono">{`{{${v}}}`}</Badge>
                     ))
@@ -883,7 +1204,7 @@ export function EmailManagementPage() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Ngày tạo</label>
-                  <p className="text-sm">{new Date(viewTemplate.created_at).toLocaleDateString('vi-VN')}</p>
+                  <p className="text-sm">{viewTemplate.created_at ? new Date(viewTemplate.created_at).toLocaleDateString('vi-VN') : ''}</p>
                 </div>
               </div>
             </div>
@@ -892,7 +1213,7 @@ export function EmailManagementPage() {
       </Dialog>
 
       {/* Test Email Dialog */}
-      <Dialog open={isTestEmailOpen} onOpenChange={setIsTestEmailOpen}>
+      <Dialog open={isTestEmailOpen} onOpenChange={(open) => { if (!open) setIsTestEmailOpen(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Kiểm tra cấu hình Email</DialogTitle>
@@ -900,7 +1221,7 @@ export function EmailManagementPage() {
           <div className="space-y-4 mt-4">
             <div>
               <label className="block text-sm font-medium mb-1.5">Email nhận thử nghiệm *</label>
-              <Input 
+              <Input
                 type="email"
                 placeholder="your-email@example.com"
                 value={testEmailForm.test_email}
@@ -932,9 +1253,32 @@ export function EmailManagementPage() {
               <Button variant="outline" onClick={() => setIsTestEmailOpen(false)}>
                 Hủy
               </Button>
-              <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
-                <Sparkles className="mr-2 h-4 w-4" />
-                Gửi Email Thử
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={handleTestEmail}
+                disabled={isSaving || emailSendingStatus.test === 'sending'}
+              >
+                {emailSendingStatus.test === 'sending' ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Đang gửi...
+                  </>
+                ) : emailSendingStatus.test === 'success' ? (
+                  <>
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Đã gửi
+                  </>
+                ) : emailSendingStatus.test === 'error' ? (
+                  <>
+                    <AlertCircle className="mr-2 h-4 w-4" />
+                    Gửi thất bại
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Gửi Email Thử
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -943,3 +1287,5 @@ export function EmailManagementPage() {
     </div>
   )
 }
+
+export default EmailManagementPage

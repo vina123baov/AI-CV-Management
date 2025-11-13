@@ -115,7 +115,6 @@ export function CompanySettings({ profile, handleInputChange }: CompanySettingsP
   const [isSavingLogo, setIsSavingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load logo từ Supabase khi component mount
   useEffect(() => {
     loadLogoFromSupabase();
   }, []);
@@ -126,7 +125,7 @@ export function CompanySettings({ profile, handleInputChange }: CompanySettingsP
         .from('cv_company_profile')
         .select('logo_url')
         .eq('id', COMPANY_PROFILE_ID)
-        .single();
+        .maybeSingle();
       
       if (error && error.code !== 'PGRST116') {
         console.error("Error loading logo:", error);

@@ -160,10 +160,18 @@ export function DashboardPage() {
         setTopJobs(sortedJobs.slice(0, 6));
       }
 
-      // Hoạt động gần đây
-      const { data: activities, error: activitiesError } = await supabase.rpc('get_recent_activities', { p_limit: 6 });
-      if (activitiesError) console.error("Error fetching activities:", activitiesError);
-      if (activities) setRecentActivities(activities as ActivityData[]);
+      // Hoạt động gần đây - SỬA TẠI ĐÂY (dòng 165)
+      const { data: activities, error: activitiesError } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(6);
+      
+      if (activitiesError) {
+        console.warn("Error fetching activities:", activitiesError);
+      } else if (activities) {
+        setRecentActivities(activities as ActivityData[]);
+      }
       
     } catch (error) {
       console.error("Dashboard data fetch error:", error);
