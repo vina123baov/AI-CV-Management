@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from "react"
-import { Search, Plus, Eye, Edit, Trash2, Users, UserCheck, TrendingUp, Filter, Download, FileText, Brain, X, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, Users, UserCheck, TrendingUp, Filter, Download, FileText, Brain, X, AlertTriangle, CheckCircle2, Info, MoreHorizontal } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { saveCandidateSkills, getCandidateSkills, type Skill } from "@/utils/skillsHelper"
@@ -60,6 +60,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabaseClient"
 import { parseCV, validateCVFile, type ParsedCV } from "@/utils/cvParser"
@@ -1666,23 +1672,35 @@ export function CandidatesPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleViewCandidate(candidate)}>
-                        <Eye className="h-4 w-4 text-blue-600" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleEditCandidate(candidate)}>
-                        <Edit className="h-4 w-4 text-green-600" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleViewCV(candidate)}>
-                        <FileText className="h-4 w-4 text-purple-600" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleAnalyzeCV(candidate)}>
-                        <Brain className="h-4 w-4 text-orange-600" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteCandidate(candidate)}>
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleViewCandidate(candidate)} className="flex items-center gap-2">
+                          <Eye className="h-4 w-4 text-blue-600" />
+                          <span>Xem thông tin</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditCandidate(candidate)} className="flex items-center gap-2">
+                          <Edit className="h-4 w-4 text-green-600" />
+                          <span>Chỉnh sửa</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewCV(candidate)} className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-purple-600" />
+                          <span>Xem CV</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleAnalyzeCV(candidate)} className="flex items-center gap-2">
+                          <Brain className="h-4 w-4 text-orange-600" />
+                          <span>Phân tích CV</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDeleteCandidate(candidate)} className="flex items-center gap-2 text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                          <span>Xóa ứng viên</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
