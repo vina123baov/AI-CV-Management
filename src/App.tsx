@@ -4,11 +4,11 @@ import {
   createBrowserRouter,
   RouterProvider,
   Navigate,
-  Outlet,
 } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
-// Layouts / Pages
+// Layouts
 import { MainLayout } from "@/components/layout/MainLayout";
 
 // Safe namespace imports to avoid "has no default export" / named vs default mismatches
@@ -59,89 +59,150 @@ const CategorySettingsPage = resolveModuleComponent(CategorySettingsModule, ["Ca
 const RegisterPage = resolveModuleComponent(RegisterPageModule, ["RegisterPage"]) ?? (() => <div>Missing Register</div>);
 const UsersPage = resolveModuleComponent(UsersPageModule, ["UsersPage","User"]) ?? (() => <div>Missing Users</div>);
 
-// SIMPLIFIED: RequireAuth component - uses AuthContext instead of duplicate logic
-const RequireAuth: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const { user, loading } = useAuth();
-  const [showReset, setShowReset] = React.useState(false);
-
-  // Show reset button after 5 seconds of loading
-  React.useEffect(() => {
-    if (loading) {
-      const timer = setTimeout(() => setShowReset(true), 5000);
-      return () => clearTimeout(timer);
-    } else {
-      setShowReset(false);
-    }
-  }, [loading]);
-
-  // Show loading state while AuthContext is initializing
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen text-gray-500 space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p>Đang kiểm tra đăng nhập...</p>
-        {showReset && (
-          <button
-            onClick={() => {
-              console.log("🔄 Force reset - clearing session and reloading");
-              localStorage.clear();
-              sessionStorage.clear();
-              window.location.href = "/login";
-            }}
-            className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
-          >
-            Tải lại trang đăng nhập
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // Redirect to login if not authenticated
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // User is authenticated, render protected content
-  return <>{children ?? <Outlet />}</>;
-};
-
 const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
-  { path: "/register", element: <RegisterPage /> },
+  // Public routes
+  { 
+    path: "/login", 
+    element: <LoginPage /> 
+  },
+  { 
+    path: "/register", 
+    element: <RegisterPage /> 
+  },
+  
+  // Protected routes with MainLayout
   {
     path: "/",
     element: (
-      <RequireAuth>
+      <ProtectedRoute>
         <MainLayout />
-      </RequireAuth>
+      </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: "dashboard", element: <DashboardPage /> },
-      { path: "mo-ta-cong-viec", element: <JobsPage /> },
-      { path: "ung-vien", element: <CandidatesPage /> },
-      { path: "phong-van", element: <InterviewsPage /> },
-      { path: "loc-cv", element: <CVFilterPage /> },
-      { path: "danh-gia", element: <ReviewsPage /> },
-      { path: "quan-ly-email", element: <EmailManagementPage /> },
-      { path: "cai-dat", element: <SettingsPage /> },
-      { path: "cai-dat/danh-muc", element: <CategorySettingsPage /> },
-      { path: "cai-dat/thong-tin-ca-nhan", element: <ProfileSettingsPage /> },
-      { path: "nguoi-dung", element: <UsersPage /> },
-      { path: "ai", element: <AIToolsPage /> },
-      { path: "offers", element: <OffersPage /> },
+      // Redirect root to dashboard
+      { 
+        index: true, 
+        element: <Navigate to="/dashboard" replace /> 
+      },
+      
+      // Routes accessible by ALL authenticated users
+      { 
+        path: "dashboard", 
+        element: <DashboardPage /> 
+      },
+      { 
+        path: "cai-dat/thong-tin-ca-nhan", 
+        element: <ProfileSettingsPage /> 
+      },
+      { 
+        path: "cai-dat", 
+        element: <SettingsPage /> 
+      },
+      
+      // Routes for HR, INTERVIEWER, and ADMIN
+      { 
+        path: "mo-ta-cong-viec", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR', 'INTERVIEWER']}>
+            <JobsPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "ung-vien", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR', 'INTERVIEWER']}>
+            <CandidatesPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "phong-van", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR', 'INTERVIEWER']}>
+            <InterviewsPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "loc-cv", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR', 'INTERVIEWER']}>
+            <CVFilterPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "danh-gia", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR', 'INTERVIEWER']}>
+            <ReviewsPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "offers", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR']}>
+            <OffersPage />
+          </ProtectedRoute>
+        )
+      },
+      
+      // Routes for ADMIN and HR only
+      { 
+        path: "nguoi-dung", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR']}>
+            <UsersPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "quan-ly-email", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR']}>
+            <EmailManagementPage />
+          </ProtectedRoute>
+        )
+      },
+      { 
+        path: "cai-dat/danh-muc", 
+        element: (
+          <ProtectedRoute requiredRole={['ADMIN', 'HR']}>
+            <CategorySettingsPage />
+          </ProtectedRoute>
+        )
+      },
+      
+      // Routes for ADMIN only
+      { 
+        path: "ai", 
+        element: (
+          <ProtectedRoute requiredRole="ADMIN">
+            <AIToolsPage />
+          </ProtectedRoute>
+        )
+      },
     ],
   },
-  { path: "*", element: <Navigate to="/login" replace /> },
+  
+  // Catch-all: redirect unknown routes to login
+  { 
+    path: "*", 
+    element: <Navigate to="/login" replace /> 
+  },
 ]);
 
 export default function App() {
   return (
     <AuthProvider>
       <Suspense fallback={
-        <div className="flex items-center justify-center h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="flex items-center justify-center h-screen bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Đang tải...</p>
+          </div>
         </div>
       }>
         <RouterProvider router={router} />
