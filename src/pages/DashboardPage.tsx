@@ -69,116 +69,133 @@ export function DashboardPage() {
   const [recentActivities, setRecentActivities] = useState<ActivityData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+  // Quick fix: Add error handling to fetchDashboardData
+// Replace the fetchDashboardData function in DashboardPage.tsx
+
+const fetchDashboardData = async () => {
+  setLoading(true);
+  try {
+    // ⚠️ SAFE MODE: Wrap all RPC calls in try-catch
+    
+    // Lấy thống kê CV
     try {
-      // Lấy thống kê CV với tăng trưởng
       const { data: cvStats, error: cvError } = await supabase.rpc('get_cv_growth_stats');
-      if (cvError) {
-        console.error("Error fetching CV stats:", cvError);
+      if (!cvError && cvStats?.[0]) {
+        const cvData = cvStats[0];
+        setStats(prev => ({ 
+          ...prev,
+          totalCV: Number(cvData.total_cv) || 0,
+          cvChange: Number(cvData.percentage_change) || 0
+        }));
       }
-      
-      const cvData = cvStats?.[0] || { 
-        total_cv: 0,
-        this_month_count: 0,
-        last_month_count: 0,
-        percentage_change: 0 
-      };
-      
-      // Lấy thống kê công việc với tăng trưởng
+    } catch (err) {
+      console.warn("⚠️ RPC get_cv_growth_stats not available, using fallback");
+      // Fallback: Count from cv_candidates table
+      const { count } = await supabase.from('cv_candidates').select('*', { count: 'exact', head: true });
+      setStats(prev => ({ ...prev, totalCV: count || 0 }));
+    }
+    
+    // Lấy thống kê công việc
+    try {
       const { data: jobsStats, error: jobsError } = await supabase.rpc('get_jobs_growth_stats');
-      if (jobsError) {
-        console.error("Error fetching jobs stats:", jobsError);
+      if (!jobsError && jobsStats?.[0]) {
+        const jobsData = jobsStats[0];
+        setStats(prev => ({ 
+          ...prev,
+          openJobs: Number(jobsData.total_open_jobs) || 0,
+          jobsChange: Number(jobsData.percentage_change) || 0
+        }));
       }
-      
-      const jobsData = jobsStats?.[0] || { 
-        total_open_jobs: 0,
-        this_month_count: 0,
-        last_month_count: 0,
-        percentage_change: 0 
-      };
-      
-      // Lấy thống kê lịch phỏng vấn
+    } catch (err) {
+      console.warn("⚠️ RPC get_jobs_growth_stats not available, using fallback");
+      const { count } = await supabase.from('cv_jobs').select('*', { count: 'exact', head: true }).eq('status', 'open');
+      setStats(prev => ({ ...prev, openJobs: count || 0 }));
+    }
+    
+    // Lấy thống kê phỏng vấn
+    try {
       const { data: interviewStats, error: interviewError } = await supabase.rpc('get_interview_stats');
-      if (interviewError) console.error("Error fetching interview stats:", interviewError);
-      
-      const interviewData = interviewStats?.[0] || { 
-        total_interviews: 0, 
-        this_month_count: 0, 
-        last_month_count: 0, 
-        percentage_change: 0 
-      };
-      
-      setStats({ 
-        totalCV: Number(cvData.total_cv) || 0,
-        cvChange: Number(cvData.percentage_change) || 0,
-        openJobs: Number(jobsData.total_open_jobs) || 0,
-        jobsChange: Number(jobsData.percentage_change) || 0,
-        interviewingCV: Number(interviewData.total_interviews) || 0,
-        interviewingChange: Number(interviewData.percentage_change) || 0
-      });
+      if (!interviewError && interviewStats?.[0]) {
+        const interviewData = interviewStats[0];
+        setStats(prev => ({ 
+          ...prev,
+          interviewingCV: Number(interviewData.total_interviews) || 0,
+          interviewingChange: Number(interviewData.percentage_change) || 0
+        }));
+      }
+    } catch (err) {
+      console.warn("⚠️ RPC get_interview_stats not available, using fallback");
+      const { count } = await supabase.from('cv_interviews').select('*', { count: 'exact', head: true });
+      setStats(prev => ({ ...prev, interviewingCV: count || 0 }));
+    }
 
-      // Xu hướng CV theo tháng
+    // Xu hướng CV theo tháng
+    try {
       const { data: trend, error: trendError } = await supabase.rpc('get_monthly_cv_trend');
-      if (trendError) console.error("Error fetching trend:", trendError);
-      if (trend) setTrendData(trend as TrendData[]);
+      if (!trendError && trend) {
+        setTrendData(trend as TrendData[]);
+      }
+    } catch (err) {
+      console.warn("⚠️ RPC get_monthly_cv_trend not available");
+      setTrendData([]);
+    }
 
-      // Nguồn ứng viên
+    // Nguồn ứng viên
+    try {
       const { data: sources, error: sourcesError } = await supabase.rpc('get_candidate_sources');
-      if (sourcesError) console.error("Error fetching sources:", sourcesError);
-      if (sources && sources.length > 0) {
+      if (!sourcesError && sources && sources.length > 0) {
         setSourceData(sources as SourceData[]);
       } else {
-        setSourceData([
-          { source: 'Website', count: 0 },
-          { source: 'LinkedIn', count: 0 },
-          { source: 'Facebook', count: 0 }
-        ]);
+        throw new Error('No sources data');
       }
-
-      // Top vị trí tuyển dụng
-      const { data: jobs, error: jobsError2 } = await supabase
-        .from('cv_jobs')
-        .select(`
-          id,
-          title,
-          status,
-          cv_candidates(count)
-        `);
-      
-      if (jobsError2) {
-        console.error("Error fetching top jobs:", jobsError2);
-      } else if (jobs) {
-        const jobsWithCount = jobs.map(job => ({
-          id: job.id,
-          title: job.title,
-          status: job.status,
-          candidate_count: job.cv_candidates?.[0]?.count || 0
-        }));
-
-        const sortedJobs = jobsWithCount.sort((a, b) => b.candidate_count - a.candidate_count);
-        setTopJobs(sortedJobs.slice(0, 6));
-      }
-
-      // Hoạt động gần đây - SỬA TẠI ĐÂY (dòng 165)
-      const { data: activities, error: activitiesError } = await supabase
-        .from('activity_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(6);
-      
-      if (activitiesError) {
-        console.warn("Error fetching activities:", activitiesError);
-      } else if (activities) {
-        setRecentActivities(activities as ActivityData[]);
-      }
-      
-    } catch (error) {
-      console.error("Dashboard data fetch error:", error);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.warn("⚠️ RPC get_candidate_sources not available, using default");
+      setSourceData([
+        { source: 'Website', count: 0 },
+        { source: 'LinkedIn', count: 0 },
+        { source: 'Facebook', count: 0 }
+      ]);
     }
-  };
+
+    // Top vị trí tuyển dụng - THIS WORKS
+    const { data: jobs, error: jobsError2 } = await supabase
+      .from('cv_jobs')
+      .select(`
+        id,
+        title,
+        status,
+        cv_candidates(count)
+      `);
+    
+    if (!jobsError2 && jobs) {
+      const jobsWithCount = jobs.map(job => ({
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        candidate_count: job.cv_candidates?.[0]?.count || 0
+      }));
+
+      const sortedJobs = jobsWithCount.sort((a, b) => b.candidate_count - a.candidate_count);
+      setTopJobs(sortedJobs.slice(0, 6));
+    }
+
+    // Hoạt động gần đây - THIS WORKS
+    const { data: activities, error: activitiesError } = await supabase
+      .from('activity_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(6);
+    
+    if (!activitiesError && activities) {
+      setRecentActivities(activities as ActivityData[]);
+    }
+    
+  } catch (error) {
+    console.error("❌ Dashboard data fetch error:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchDashboardData();

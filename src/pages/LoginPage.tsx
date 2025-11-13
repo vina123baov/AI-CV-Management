@@ -17,17 +17,15 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ⚠️ FIX: Only redirect if already logged in AND not in the middle of auth loading
+  // ⚠️ FIX: Strict redirect - only if authenticated
   useEffect(() => {
-    // Don't redirect during auth initialization
     if (authLoading) {
-      console.log("⏳ Auth is initializing, waiting...");
+      console.log("⏳ Auth initializing...");
       return;
     }
 
-    // Only redirect if we have a valid user
     if (user) {
-      console.log("✅ User already logged in, redirecting to dashboard");
+      console.log("✅ User authenticated, redirecting...");
       const from = (location.state as any)?.from?.pathname || "/dashboard";
       navigate(from, { replace: true });
     }
@@ -35,6 +33,8 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Reset states
     setError("");
     setLoading(true);
 
@@ -50,9 +50,17 @@ export const LoginPage: React.FC = () => {
 
       console.log("🔐 Attempting login:", trimmedEmail);
 
-      // Call signIn from AuthContext (handles both custom and Supabase auth)
-      const result = await signIn(trimmedEmail, password);
+      // ⚠️ CRITICAL FIX: Add timeout protection (15 seconds)
+      const loginPromise = signIn(trimmedEmail, password);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("Đăng nhập quá lâu (>15s). Vui lòng kiểm tra kết nối mạng và thử lại."));
+        }, 15000);
+      });
 
+      const result = await Promise.race([loginPromise, timeoutPromise]);
+
+      // ⚠️ CRITICAL: Always check for errors first
       if (result?.error) {
         console.error("❌ Login error:", result.error);
         setError(result.error.message || "Đăng nhập thất bại");
@@ -62,20 +70,24 @@ export const LoginPage: React.FC = () => {
 
       // Check if we have valid user data
       if (!result?.data?.user) {
+        console.error("❌ No user data returned");
         setError("Không thể đăng nhập. Vui lòng thử lại.");
         setLoading(false);
         return;
       }
 
       console.log("✅ Login successful!");
-      console.log("👤 User:", result.data.user);
+      console.log("👤 User:", result.data.user.email);
 
-      // ⚠️ FIX: Add a small delay to ensure state is updated
+      // ⚠️ FIX: Wait for React state to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Redirect to the page they tried to access, or dashboard
+      // Navigate
       const from = (location.state as any)?.from?.pathname || "/dashboard";
-      console.log("🔀 Redirecting to:", from);
+      console.log("🔀 Navigating to:", from);
+      
+      // ⚠️ CRITICAL: Stop loading before navigate
+      setLoading(false);
       navigate(from, { replace: true });
 
     } catch (ex: any) {
@@ -85,13 +97,13 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Show loading screen during auth initialization
+  // Show loading during auth init
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Đang kiểm tra phiên đăng nhập...</p>
+          <p className="text-gray-600">Đang tải...</p>
         </div>
       </div>
     );
@@ -173,7 +185,7 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-          {/* Thông báo liên hệ Admin */}
+          {/* Admin contact */}
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -207,4 +219,4 @@ export const LoginPage: React.FC = () => {
   );
 };
 
-export default LoginPage;
+export default LoginPage; 

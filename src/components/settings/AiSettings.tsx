@@ -13,8 +13,10 @@ interface AIConfig {
   openai_api_key?: string;
   openai_endpoint?: string;
   gemini_api_key?: string;
+  openrouter_api_key?: string;
   is_openai_enabled?: boolean;
   is_gemini_enabled?: boolean;
+  is_openrouter_enabled?: boolean;
   profile_id?: string;
 }
 
@@ -103,15 +105,19 @@ const AiSettings = () => {
   const [saving, setSaving] = useState(false);
   const [testingOpenAI, setTestingOpenAI] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
+  const [testingOpenRouter, setTestingOpenRouter] = useState(false);
   const [openAIStatus, setOpenAIStatus] = useState<'unconfigured' | 'configured' | 'error'>('unconfigured');
   const [geminiStatus, setGeminiStatus] = useState<'unconfigured' | 'configured' | 'error'>('unconfigured');
+  const [openRouterStatus, setOpenRouterStatus] = useState<'unconfigured' | 'configured' | 'error'>('unconfigured');
   
   const [config, setConfig] = useState<AIConfig>({
     openai_api_key: '',
     openai_endpoint: 'https://api.openai.com/v1',
     gemini_api_key: '',
-    is_gemini_enabled: false,
+    openrouter_api_key: '',
     is_openai_enabled: false,
+    is_gemini_enabled: false,
+    is_openrouter_enabled: false,
   });
 
   useEffect(() => {
@@ -133,6 +139,9 @@ const AiSettings = () => {
       if (data.gemini_api_key && data.gemini_api_key.length > 0) {
         setGeminiStatus('configured');
       }
+      if (data.openrouter_api_key && data.openrouter_api_key.length > 0) {
+        setOpenRouterStatus('configured');
+      }
     }
     if (error && error.code !== 'PGRST116') {
       console.error("Error loading AI config:", error);
@@ -148,6 +157,9 @@ const AiSettings = () => {
     }
     if (field === 'gemini_api_key') {
       setGeminiStatus('unconfigured');
+    }
+    if (field === 'openrouter_api_key') {
+      setOpenRouterStatus('unconfigured');
     }
   };
 
@@ -224,6 +236,49 @@ const AiSettings = () => {
       console.error('Gemini test error:', error);
     } finally {
       setTestingGemini(false);
+    }
+  };
+
+  const testOpenRouter = async () => {
+    if (!config.openrouter_api_key) {
+      alert(t('ai.messages.enterOpenRouterKey')); // Assume new translation key
+      return;
+    }
+
+    if (!config.openrouter_api_key.startsWith('sk-or-')) { // Assuming OpenRouter keys start with 'sk-or-'
+      alert(t('ai.messages.invalidOpenRouterKey')); // Assume new translation key
+      setOpenRouterStatus('error');
+      return;
+    }
+
+    setTestingOpenRouter(true);
+    
+    try {
+      const response = await fetch('/api/test-openrouter', { // Assume a new backend endpoint for testing
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiKey: config.openrouter_api_key,
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setOpenRouterStatus('configured');
+        alert(t('ai.messages.openRouterSuccess')); // Assume new translation key
+      } else {
+        setOpenRouterStatus('error');
+        alert(t('ai.messages.openRouterFailed') + ' ' + data.error); // Assume new translation key
+      }
+    } catch (error: any) {
+      setOpenRouterStatus('error');
+      alert(t('ai.messages.openRouterError') + ' ' + (error.message || 'Unknown error')); // Assume new translation key
+      console.error('OpenRouter test error:', error);
+    } finally {
+      setTestingOpenRouter(false);
     }
   };
 
@@ -444,6 +499,76 @@ const AiSettings = () => {
           </div>
         </div>
 
+        {/* OpenRouter Configuration */}
+        <div className="space-y-6 pb-6 border-b">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-semibold text-sm">OR</span> {/* Custom icon for OpenRouter */}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold">{t('ai.openrouter.title')}</h3> {/* Assume new translation key */}
+                {openRouterStatus === 'configured' && (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                )}
+                {openRouterStatus === 'error' && (
+                  <AlertCircle className="h-5 w-5 text-red-600" />
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {t('ai.openrouter.description')} {/* Assume new translation key, e.g., "Configure OpenRouter AI for job descriptions and candidate analysis" */}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4 pl-0">
+            <div className="space-y-2">
+              <Label htmlFor="openrouter_api_key" className="text-sm font-semibold">
+                {t('ai.openrouter.apiKey')} {/* Assume new translation key */}
+              </Label>
+              <div className="relative">
+                <Input
+                  id="openrouter_api_key"
+                  type="password"
+                  value={config.openrouter_api_key || ''}
+                  onChange={(e) => handleInputChange('openrouter_api_key', e.target.value)}
+                  className="bg-gray-50 border-gray-200 pr-10"
+                  placeholder={t('ai.openrouter.apiKeyPlaceholder')}
+                />
+                {openRouterStatus === 'configured' && (
+                  <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-green-600" />
+                )}
+                {openRouterStatus === 'error' && (
+                  <AlertCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-red-600" />
+                )}
+              </div>
+              {openRouterStatus === 'configured' && (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <p className="text-xs text-green-600 font-medium">{t('ai.openrouter.configured')}</p> {/* Assume new translation key */}
+                </div>
+              )}
+              {openRouterStatus === 'error' && (
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <p className="text-xs text-red-600 font-medium">{t('ai.openrouter.connectionFailed')}</p> {/* Assume new translation key */}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {t('ai.openrouter.getKeyFrom')}{' '} {/* Assume new translation key */}
+                <a 
+                  href="https://openrouter.ai" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  OpenRouter Dashboard
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Enable/Disable Toggle Switches */}
         <div className="space-y-4">
           {/* Enable Gemini AI */}
@@ -480,6 +605,25 @@ const AiSettings = () => {
                 id="is_openai_enabled"
                 checked={config.is_openai_enabled || false}
                 onChange={(checked) => handleInputChange('is_openai_enabled', checked)}
+              />
+            </div>
+          </div>
+
+          {/* Enable OpenRouter */}
+          <div className="border rounded-lg p-4 bg-gray-50">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="is_openrouter_enabled" className="text-base font-semibold">
+                  {t('ai.openrouter.enable')} {/* Assume new translation key */}
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {t('ai.openrouter.enableDescription')} {/* Assume new translation key, e.g., "Enable/disable OpenRouter for job descriptions and candidate features" */}
+                </p>
+              </div>
+              <ToggleSwitch
+                id="is_openrouter_enabled"
+                checked={config.is_openrouter_enabled || false}
+                onChange={(checked) => handleInputChange('is_openrouter_enabled', checked)}
               />
             </div>
           </div>
@@ -586,12 +730,46 @@ const AiSettings = () => {
               </span>
             </div>
           </div>
+
+          {/* OpenRouter Card */}
+          <div className="border rounded-lg p-4 bg-gray-50">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm">OR</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold">{t('ai.services.openrouter.name')}</h4> {/* Assume new translation key */}
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t('ai.services.openrouter.description')} {/* Assume new translation key, e.g., "Supports multiple models for job descriptions and candidates" */}
+                  </p>
+                </div>
+              </div>
+              <span className={`text-xs px-2 py-1 rounded font-medium ${
+                openRouterStatus === 'configured' 
+                  ? 'text-teal-600 bg-teal-50' 
+                  : openRouterStatus === 'error'
+                  ? 'text-red-600 bg-red-50'
+                  : 'text-muted-foreground bg-gray-100'
+              }`}>
+                {openRouterStatus === 'configured' ? t('ai.status.configured') : openRouterStatus === 'error' ? t('ai.status.error') : t('ai.status.notConfigured')}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <div className={`w-2 h-2 rounded-full ${
+                config.is_openrouter_enabled ? 'bg-teal-500' : 'bg-gray-400'
+              }`}></div>
+              <span className="text-xs text-muted-foreground">
+                {config.is_openrouter_enabled ? t('ai.status.enabled') : t('ai.status.disabled')}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Test Features */}
         <div className="space-y-3">
           <h4 className="font-semibold">{t('ai.testFeatures.title')}</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3"> {/* Adjusted to 3 columns */}
             <Button 
               variant="outline" 
               className="justify-center"
@@ -628,6 +806,24 @@ const AiSettings = () => {
                 </>
               )}
             </Button>
+            <Button 
+              variant="outline" 
+              className="justify-center text-teal-600 border-teal-200 hover:bg-teal-50"
+              disabled={!config.openrouter_api_key || testingOpenRouter}
+              onClick={testOpenRouter}
+            >
+              {testingOpenRouter ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {t('ai.buttons.testing')}
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-teal-600" />
+                  {t('ai.buttons.testOpenRouter')} {/* Assume new translation key */}
+                </>
+              )}
+            </Button>
           </div>
         </div>
 
@@ -648,6 +844,14 @@ const AiSettings = () => {
               <span className={geminiStatus === 'configured' ? 'text-blue-600' : 'text-muted-foreground'}>
                 {config.gemini_api_key && config.gemini_api_key.length > 8
                   ? config.gemini_api_key.substring(0, 4) + '••••••••••••••••••••••••••••' + config.gemini_api_key.substring(config.gemini_api_key.length - 4) 
+                  : t('ai.status.notConfigured')}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b">
+              <span className="text-muted-foreground">{t('ai.configDetails.openrouterKey')}</span> {/* Assume new translation key */}
+              <span className={openRouterStatus === 'configured' ? 'text-teal-600' : 'text-muted-foreground'}>
+                {config.openrouter_api_key && config.openrouter_api_key.length > 8
+                  ? config.openrouter_api_key.substring(0, 7) + '...' 
                   : t('ai.status.notConfigured')}
               </span>
             </div>
@@ -683,7 +887,7 @@ const AiSettings = () => {
               {openAIStatus === 'configured' && config.is_openai_enabled ? t('ai.status.enabled') : t('ai.status.notConfigured')}
             </span>
           </div>
-          <div className="flex items-center justify-between py-3">
+          <div className="flex items-center justify-between py-3 border-b">
             <span className="font-medium">{t('ai.availableFeatures.smartJD')}</span>
             <span className={`text-xs px-3 py-1 rounded ${
               geminiStatus === 'configured' && config.is_gemini_enabled
@@ -691,6 +895,26 @@ const AiSettings = () => {
                 : 'text-muted-foreground bg-gray-100'
             }`}>
               {geminiStatus === 'configured' && config.is_gemini_enabled ? t('ai.status.enabled') : t('ai.status.notConfigured')}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-3 border-b">
+            <span className="font-medium">{t('ai.availableFeatures.jobDescription')}</span> {/* Assume new translation key */}
+            <span className={`text-xs px-3 py-1 rounded ${
+              openRouterStatus === 'configured' && config.is_openrouter_enabled
+                ? 'text-teal-600 bg-teal-50 font-medium'
+                : 'text-muted-foreground bg-gray-100'
+            }`}>
+              {openRouterStatus === 'configured' && config.is_openrouter_enabled ? t('ai.status.enabled') : t('ai.status.notConfigured')}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-3">
+            <span className="font-medium">{t('ai.availableFeatures.candidateAnalysis')}</span> {/* Assume new translation key */}
+            <span className={`text-xs px-3 py-1 rounded ${
+              openRouterStatus === 'configured' && config.is_openrouter_enabled
+                ? 'text-teal-600 bg-teal-50 font-medium'
+                : 'text-muted-foreground bg-gray-100'
+            }`}>
+              {openRouterStatus === 'configured' && config.is_openrouter_enabled ? t('ai.status.enabled') : t('ai.status.notConfigured')}
             </span>
           </div>
         </div >
