@@ -12,6 +12,7 @@ import {
   Target,
   Sparkles,
   Briefcase,
+  RotateCcw,
 } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
@@ -94,6 +95,7 @@ async function analyzeWithGPT4o(
           description: job.description,
           requirements: job.requirements,
           benefits: job.benefits,
+          mandatory_requirements: job.mandatory_requirements || null,  // ✅ NEW
         })),
         primary_job_id: primaryJobId,
       }),
@@ -143,6 +145,7 @@ export default function PotentialCandidatesPage() {
   
   const [loading, setLoading] = React.useState(true)
   const [analyzing, setAnalyzing] = React.useState(false)
+  const [reanalyzingId, setReanalyzingId] = React.useState<string | null>(null)  // ✅ NEW: Track re-analyzing
   const [candidates, setCandidates] = React.useState<any[]>([])
   const [jobs, setJobs] = React.useState<any[]>([])
   const [selectedJob, setSelectedJob] = React.useState<string>("all")
@@ -177,6 +180,7 @@ export default function PotentialCandidatesPage() {
             description,
             requirements,
             benefits,
+            mandatory_requirements,
             job_type,
             work_location,
             location
@@ -356,12 +360,77 @@ export default function PotentialCandidatesPage() {
     }
   }
 
+  // ✅ NEW: Handle Re-analyze (phân tích lại)
+  const handleReanalyze = async (candidate: any) => {
+    try {
+      if (!candidate.cv_parsed_data) {
+        toast({
+          title: "Lỗi",
+          description: "CV chưa được parse",
+          duration: 3000,
+        })
+        return
+      }
+
+      setReanalyzingId(candidate.id)
+
+      console.log('🔄 RE-ANALYZING candidate:', candidate.full_name);
+
+      const cvText = candidate.cv_parsed_data?.fullText || ""
+      const cvData = {
+        full_name: candidate.full_name,
+        email: candidate.email,
+        phone_number: candidate.phone_number,
+        address: candidate.address,
+        university: candidate.university,
+        education: candidate.education,
+        experience: candidate.experience,
+      }
+
+      const analysisResult = await analyzeWithGPT4o(
+        cvText,
+        cvData,
+        jobs,
+        candidate.job_id
+      )
+
+      const updatedParsedData = {
+        ...candidate.cv_parsed_data,
+        analysis_result: analysisResult,
+      }
+
+      const { error } = await supabase
+        .from("cv_candidates")
+        .update({ cv_parsed_data: updatedParsedData })
+        .eq("id", candidate.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Phân tích lại thành công",
+        description: `${candidate.full_name} - Điểm mới: ${analysisResult.overall_score}`,
+        duration: 3000,
+      })
+
+      await fetchData()
+
+    } catch (error) {
+      console.error("Error re-analyzing candidate:", error)
+      toast({
+        title: "Lỗi phân tích lại",
+        description: error instanceof Error ? error.message : "Có lỗi xảy ra",
+        duration: 3000,
+      })
+    } finally {
+      setReanalyzingId(null)
+    }
+  }
+
   const handleViewDetail = (candidate: any) => {
     setSelectedCandidate(candidate)
     setShowDetail(true)
   }
 
-  // ✅ BỎ FILTER ĐIỂM TỐI THIỂU - CHỈ LỌC THEO JOB
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((c) => {
       if (selectedJob !== "all" && c.job_id !== selectedJob) return false
@@ -466,7 +535,6 @@ export default function PotentialCandidatesPage() {
         </Card>
       </div>
 
-      {/* ✅ BỎ SLIDER ĐIỂM TỐI THIỂU - CHỈ GIỮ LỌC THEO VỊ TRÍ */}
       <Card>
         <CardContent className="pt-6">
           <div>
@@ -523,6 +591,11 @@ export default function PotentialCandidatesPage() {
                   <p className="text-sm font-medium text-gray-900">
                     {candidate.analysis_result.best_match.job_title}
                   </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id
+                      ? "✅ Đây là vị trí phù hợp nhất"
+                      : "💡 Gợi ý vị trí phù hợp nhất"}
+                  </p>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-emerald-100 text-emerald-700 text-xs">
                       {candidate.analysis_result.best_match.match_score}% match
@@ -531,27 +604,51 @@ export default function PotentialCandidatesPage() {
                 </div>
               )}
 
-              <div className="flex gap-2">
+              {/* ✅ UPDATED: Buttons section với nút Phân tích lại */}
+              <div className="flex flex-col gap-2">
                 {!candidate.analysis_result ? (
                   <Button
                     size="sm"
                     onClick={() => handleAnalyzeOne(candidate)}
                     disabled={analyzing}
-                    className="flex-1"
+                    className="w-full"
                   >
                     <Brain className="h-4 w-4 mr-2" />
                     Phân tích
                   </Button>
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleViewDetail(candidate)}
-                    className="flex-1"
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    Xem chi tiết
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleViewDetail(candidate)}
+                      className="w-full"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Xem chi tiết
+                    </Button>
+                    
+                    {/* ✅ NEW: Nút Phân tích lại */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleReanalyze(candidate)}
+                      disabled={reanalyzingId === candidate.id}
+                      className="w-full"
+                    >
+                      {reanalyzingId === candidate.id ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Đang phân tích...
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="h-4 w-4 mr-2" />
+                          Phân tích lại
+                        </>
+                      )}
+                    </Button>
+                  </>
                 )}
               </div>
             </CardContent>
@@ -620,6 +717,11 @@ export default function PotentialCandidatesPage() {
                         {selectedCandidate.analysis_result.best_match.match_score}% match
                       </Badge>
                     </div>
+                    <p className="text-sm text-emerald-600">
+                      {selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id
+                        ? "✅ Đây là vị trí phù hợp nhất"
+                        : "💡 Gợi ý vị trí phù hợp nhất"}
+                    </p>
                     <p className="text-sm text-emerald-800">
                       {selectedCandidate.analysis_result.best_match.recommendation}
                     </p>
@@ -632,7 +734,7 @@ export default function PotentialCandidatesPage() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="strengths">Điểm mạnh</TabsTrigger>
                     <TabsTrigger value="weaknesses">Điểm yếu</TabsTrigger>
-                    <TabsTrigger value="matches">Tất cả matches</TabsTrigger>
+                    <TabsTrigger value="matches">Gợi ý Matches khác</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="strengths" className="space-y-3">
@@ -678,55 +780,77 @@ export default function PotentialCandidatesPage() {
                   </TabsContent>
 
                   <TabsContent value="matches" className="space-y-3">
-                    {selectedCandidate.analysis_result?.all_matches?.length > 0 ? (
-                      selectedCandidate.analysis_result.all_matches.map((match: JobMatchResult, index: number) => (
-                        <Card
-                          key={index}
-                          className={`${getScoreBg(match.match_score)} border-2`}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <h5 className="font-semibold text-gray-900">{match.job_title}</h5>
-                              <Badge className={`${getScoreBg(match.match_score)}`}>
-                                <span className={`font-bold ${getScoreColor(match.match_score)}`}>
-                                  {match.match_score}%
-                                </span>
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-gray-700 mb-3">{match.recommendation}</p>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <p className="text-xs font-medium text-gray-500 mb-2">Điểm mạnh:</p>
-                                <ul className="space-y-1">
-                                  {match.strengths?.slice(0, 3).map((s, i) => (
-                                    <li key={i} className="text-xs text-gray-700 flex items-start gap-1">
-                                      <CheckCircle className="h-3 w-3 text-emerald-600 mt-0.5 flex-shrink-0" />
-                                      {s}
-                                    </li>
-                                  ))}
-                                  {(!match.strengths || match.strengths.length === 0) && (
-                                    <p className="text-xs text-gray-500">N/A</p>
-                                  )}
-                                </ul>
+                    {selectedCandidate.analysis_result?.all_matches && selectedCandidate.analysis_result.all_matches.length > 0 ? (
+                      <>
+                        {(() => {
+                          // Lọc ra các job gợi ý khác (không phải job hiện tại) và giới hạn tối đa 3
+                          const suggestedMatches = selectedCandidate.analysis_result.all_matches
+                            .filter((match: JobMatchResult) => match.job_id !== selectedCandidate.cv_jobs?.id)
+                            .slice(0, 3);
+
+                          return suggestedMatches.length > 0 ? (
+                            <>
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                                <p className="text-sm text-blue-800">
+                                  <span className="font-semibold">💡 Gợi ý {suggestedMatches.length} vị trí phù hợp khác:</span>
+                                </p>
                               </div>
-                              <div>
-                                <p className="text-xs font-medium text-gray-500 mb-2">Điểm yếu:</p>
-                                <ul className="space-y-1">
-                                  {match.weaknesses?.slice(0, 2).map((w, i) => (
-                                    <li key={i} className="text-xs text-gray-700 flex items-start gap-1">
-                                      <AlertCircle className="h-3 w-3 text-amber-600 mt-0.5 flex-shrink-0" />
-                                      {w}
-                                    </li>
-                                  ))}
-                                  {(!match.weaknesses || match.weaknesses.length === 0) && (
-                                    <p className="text-xs text-gray-500">N/A</p>
-                                  )}
-                                </ul>
-                              </div>
+                              {suggestedMatches.map((match: JobMatchResult, index: number) => (
+                                <Card
+                                  key={index}
+                                  className={`${getScoreBg(match.match_score)} border-2`}
+                                >
+                                  <CardContent className="p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                      <h5 className="font-semibold text-gray-900">{match.job_title}</h5>
+                                      <Badge className={`${getScoreBg(match.match_score)}`}>
+                                        <span className={`font-bold ${getScoreColor(match.match_score)}`}>
+                                          {match.match_score}%
+                                        </span>
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-gray-700 mb-3">{match.recommendation}</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                        <p className="text-xs font-medium text-gray-500 mb-2">Điểm mạnh:</p>
+                                        <ul className="space-y-1">
+                                          {match.strengths?.slice(0, 3).map((s, i) => (
+                                            <li key={i} className="text-xs text-gray-700 flex items-start gap-1">
+                                              <CheckCircle className="h-3 w-3 text-emerald-600 mt-0.5 flex-shrink-0" />
+                                              {s}
+                                            </li>
+                                          ))}
+                                          {(!match.strengths || match.strengths.length === 0) && (
+                                            <p className="text-xs text-gray-500">N/A</p>
+                                          )}
+                                        </ul>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs font-medium text-gray-500 mb-2">Điểm yếu:</p>
+                                        <ul className="space-y-1">
+                                          {match.weaknesses?.slice(0, 2).map((w, i) => (
+                                            <li key={i} className="text-xs text-gray-700 flex items-start gap-1">
+                                              <AlertCircle className="h-3 w-3 text-amber-600 mt-0.5 flex-shrink-0" />
+                                              {w}
+                                            </li>
+                                          ))}
+                                          {(!match.weaknesses || match.weaknesses.length === 0) && (
+                                            <p className="text-xs text-gray-500">N/A</p>
+                                          )}
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </>
+                          ) : (
+                            <div className="text-center py-8">
+                              <p className="text-gray-500">Không có gợi ý vị trí nào khác phù hợp hơn</p>
                             </div>
-                          </CardContent>
-                        </Card>
-                      ))
+                          );
+                        })()}
+                      </>
                     ) : (
                       <div className="text-center py-8">
                         <p className="text-gray-500">Không có dữ liệu matching</p>
