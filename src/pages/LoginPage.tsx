@@ -1,6 +1,6 @@
 // src/pages/LoginPage.tsx
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,16 +13,25 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { signIn, user } = useAuth();
+  const { signIn, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Redirect if already logged in
+  // ⚠️ FIX: Only redirect if already logged in AND not in the middle of auth loading
   useEffect(() => {
-    if (user) {
-      console.log("User already logged in, redirecting...");
-      navigate("/dashboard", { replace: true });
+    // Don't redirect during auth initialization
+    if (authLoading) {
+      console.log("⏳ Auth is initializing, waiting...");
+      return;
     }
-  }, [user, navigate]);
+
+    // Only redirect if we have a valid user
+    if (user) {
+      console.log("✅ User already logged in, redirecting to dashboard");
+      const from = (location.state as any)?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
+    }
+  }, [user, authLoading, navigate, location]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,49 +44,58 @@ export const LoginPage: React.FC = () => {
       // Validation
       if (!trimmedEmail || !password) {
         setError("Vui lòng điền đầy đủ thông tin");
+        setLoading(false);
         return;
       }
 
-      console.log("Attempting sign in with:", trimmedEmail);
+      console.log("🔐 Attempting login:", trimmedEmail);
 
-      // Attempt sign in
+      // Call signIn from AuthContext (handles both custom and Supabase auth)
       const result = await signIn(trimmedEmail, password);
-      console.log("Sign in result:", result);
 
-      // Check for authentication errors
       if (result?.error) {
-        console.error("Sign in error:", result.error);
-        const msg = result.error.message;
-        
-        if (msg === "Invalid login credentials") {
-          setError("Email hoặc mật khẩu không chính xác");
-        } else if (msg.includes("Email not confirmed")) {
-          setError("Vui lòng xác nhận email trước khi đăng nhập");
-        } else {
-          setError(msg || "Đăng nhập thất bại");
-        }
+        console.error("❌ Login error:", result.error);
+        setError(result.error.message || "Đăng nhập thất bại");
+        setLoading(false);
         return;
       }
 
-      // Check if we have a valid session
-      if (!result?.data?.session || !result?.data?.user) {
-        setError("Không tạo được phiên đăng nhập. Vui lòng thử lại.");
+      // Check if we have valid user data
+      if (!result?.data?.user) {
+        setError("Không thể đăng nhập. Vui lòng thử lại.");
+        setLoading(false);
         return;
       }
 
-      console.log("✅ Login successful:", result.data.user.email);
+      console.log("✅ Login successful!");
+      console.log("👤 User:", result.data.user);
 
-      // Navigate to dashboard
-      // AuthContext will handle the rest (profile fetching, state management)
-      navigate("/dashboard", { replace: true });
+      // ⚠️ FIX: Add a small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Redirect to the page they tried to access, or dashboard
+      const from = (location.state as any)?.from?.pathname || "/dashboard";
+      console.log("🔀 Redirecting to:", from);
+      navigate(from, { replace: true });
 
     } catch (ex: any) {
-      console.error("Login exception:", ex);
+      console.error("❌ Login exception:", ex);
       setError(ex?.message ?? "Có lỗi xảy ra. Vui lòng thử lại.");
-    } finally {
       setLoading(false);
     }
   };
+
+  // Show loading screen during auth initialization
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Đang kiểm tra phiên đăng nhập...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -113,6 +131,7 @@ export const LoginPage: React.FC = () => {
                   className="pl-10"
                   disabled={loading}
                   autoComplete="email"
+                  required
                 />
               </div>
             </div>
@@ -130,6 +149,7 @@ export const LoginPage: React.FC = () => {
                   className="pl-10"
                   disabled={loading}
                   autoComplete="current-password"
+                  required
                 />
               </div>
             </div>
@@ -139,9 +159,6 @@ export const LoginPage: React.FC = () => {
                 <input type="checkbox" className="rounded" />
                 <span className="text-gray-600">Ghi nhớ đăng nhập</span>
               </label>
-              <Link to="/forgot-password" className="text-blue-600 hover:underline">
-                Quên mật khẩu?
-              </Link>
             </div>
 
             <Button type="submit" className="w-full" size="lg" disabled={loading}>
@@ -156,7 +173,7 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-          {/* BỎ LINK ĐĂNG KÝ - Thay bằng thông báo liên hệ Admin */}
+          {/* Thông báo liên hệ Admin */}
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
