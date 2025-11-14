@@ -126,11 +126,11 @@ export default function UsersPage() {
       setRoles(data)
 
       if (data && data.length > 0) {
-        const defaultRole = data.find(r => r.name.toLowerCase() === 'user')
+        const defaultRole = data.find((r: Role) => r.name.toLowerCase() === 'user')
         const defaultRoleId = defaultRole ? defaultRole.roles.toString() : data[0].roles.toString()
         setFormData(prev => ({ ...prev, role_id: defaultRoleId }))
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error in fetchRoles:', error)
       setRoles([])
     }
@@ -168,7 +168,7 @@ export default function UsersPage() {
           name: user.full_name || user.name || 'Không có tên',
           email: user.email || 'Không có email',
           role: roleName.toUpperCase(),
-          status: (user.status || 'active').toUpperCase(),
+          status: (user.status || 'active').toUpperCase() as "ACTIVE" | "INACTIVE",
           synced: user.synced !== undefined ? user.synced : true,
           created_at: user.created_at || new Date().toISOString(),
           auth_user_id: user.auth_user_id || user.id
@@ -177,9 +177,10 @@ export default function UsersPage() {
 
       setUsers(formattedUsers)
       setLastSync(new Date().toLocaleString('vi-VN'))
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error in fetchUsers:', error)
-      setError(`Không thể tải danh sách người dùng: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      setError(`Không thể tải danh sách người dùng: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -241,7 +242,6 @@ export default function UsersPage() {
       setCreating(true)
       setError(null)
 
-      // Validation
       if (!formData.name.trim()) {
         setError("❌ Vui lòng nhập họ tên")
         return
@@ -269,7 +269,6 @@ export default function UsersPage() {
         return
       }
 
-      // Kiểm tra email trùng lặp
       const { data: existingUsers, error: checkError } = await supabase
         .from('cv_profiles')
         .select('email')
@@ -283,8 +282,7 @@ export default function UsersPage() {
 
       console.log('🚀 Creating user with RPC function...')
       
-      // Gọi RPC function
-      const { data, error: rpcError } = await supabase.rpc('create_cv_user', {
+      const { data, error: rpcError } = await supabase.rpc('create_cv_user_simple', {
         p_email: formData.email.trim(),
         p_password: password,
         p_full_name: formData.name.trim(),
@@ -302,7 +300,7 @@ export default function UsersPage() {
         } else if (errorMessage.includes('gen_salt') || errorMessage.includes('pgcrypto')) {
           setError("❌ Lỗi hệ thống: Thiếu extension pgcrypto. Vui lòng chạy SQL trong artifact.")
         } else if (errorMessage.includes('undefined_function') || rpcError.code === '42883') {
-          setError("❌ Function create_cv_user chưa được tạo. Vui lòng chạy SQL trong artifact.")
+          setError("❌ Function create_cv_user_simple chưa được tạo. Vui lòng chạy SQL setup.")
         } else if (errorMessage.includes('permission denied')) {
           setError("❌ Không có quyền thực hiện. Vui lòng kiểm tra RLS policies.")
         } else {
@@ -318,7 +316,6 @@ export default function UsersPage() {
 
       console.log('✅ User created successfully with ID:', data)
 
-      // Hiển thị thông tin đăng nhập
       setCreatedCredentials({
         email: formData.email.trim(),
         password: password,
@@ -327,21 +324,20 @@ export default function UsersPage() {
       setIsSuccessDialogOpen(true)
       setIsDialogOpen(false)
 
-      // Reset form
       setFormData({
         name: "",
         email: "",
         password: "",
-        role_id: roles.find(r => r.name.toLowerCase() === 'user')?.roles.toString() || roles[0]?.roles.toString() || "",
+        role_id: roles.find((r: Role) => r.name.toLowerCase() === 'user')?.roles.toString() || roles[0]?.roles.toString() || "",
         status: "ACTIVE",
       })
       
-      // Refresh danh sách
       await fetchUsers()
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Unexpected error:', error)
-      setError(`❌ Lỗi không xác định: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      setError(`❌ Lỗi không xác định: ${errorMessage}`)
     } finally {
       setCreating(false)
     }
@@ -351,7 +347,7 @@ export default function UsersPage() {
     setEditingUser(user)
     setEditFormData({
       name: user.name,
-      role_id: roles.find(r => r.name.toUpperCase() === user.role)?.roles.toString() || "",
+      role_id: roles.find((r: Role) => r.name.toUpperCase() === user.role)?.roles.toString() || "",
       status: user.status,
     })
     setIsEditDialogOpen(true)
@@ -397,29 +393,28 @@ export default function UsersPage() {
 
       alert("✅ Đã cập nhật thông tin người dùng thành công!")
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Unexpected error:', error)
-      setError(`❌ Lỗi: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      setError(`❌ Lỗi: ${errorMessage}`)
     } finally {
       setUpdating(false)
     }
   }
 
   const handleDeleteUser = async (userId: string) => {
-    const user = users.find(u => u.id === userId)
+    const user = users.find((u: User) => u.id === userId)
 
     if (!confirm(`⚠️ Bạn có chắc chắn muốn xóa người dùng "${user?.name}"?\n\nLưu ý: Thao tác này không thể hoàn tác.`)) {
       return
     }
 
     try {
-      // Xóa user roles
       await supabase
         .from('cv_user_roles')
         .delete()
         .eq('user_id', userId)
 
-      // Xóa profile
       const { error: deleteError } = await supabase
         .from('cv_profiles')
         .delete()
@@ -427,7 +422,6 @@ export default function UsersPage() {
 
       if (deleteError) throw deleteError
 
-      // Thử xóa auth user (cần service role)
       if (user?.auth_user_id) {
         try {
           await supabase.auth.admin.deleteUser(user.auth_user_id)
@@ -438,9 +432,10 @@ export default function UsersPage() {
 
       await fetchUsers()
       alert("✅ Đã xóa người dùng thành công!")
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting user:', error)
-      alert(`❌ Không thể xóa người dùng: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`❌ Không thể xóa người dùng: ${errorMessage}`)
     }
   }
 
@@ -632,7 +627,6 @@ export default function UsersPage() {
         </Table>
       </div>
 
-      {/* Dialog Thêm người dùng */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
@@ -657,7 +651,7 @@ export default function UsersPage() {
           <div className="space-y-5 py-4">
             <div className="space-y-2">
               <Label htmlFor="name" className="flex items-center gap-1">
-                Họ và tên <span className="text-red-500">*</span>
+                <span>Họ và tên</span> <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="name"
@@ -670,7 +664,7 @@ export default function UsersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="email" className="flex items-center gap-1">
-                Email <span className="text-red-500">*</span>
+                <span>Email</span> <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="email"
@@ -685,7 +679,7 @@ export default function UsersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="password">
-                Mật khẩu <span className="text-xs text-muted-foreground">(Tùy chọn)</span>
+                <span>Mật khẩu</span> <span className="text-xs text-muted-foreground">(Tùy chọn)</span>
               </Label>
               <div className="relative">
                 <Input
@@ -713,7 +707,7 @@ export default function UsersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="role" className="flex items-center gap-1">
-                Vai trò <span className="text-red-500">*</span>
+                <span>Vai trò</span> <span className="text-red-500">*</span>
               </Label>
               <Select 
                 value={formData.role_id} 
@@ -723,8 +717,8 @@ export default function UsersPage() {
                   <SelectValue placeholder="Chọn vai trò">
                     {formData.role_id && roles.length > 0 ? (
                       <div className="flex items-center gap-2">
-                        {getRoleIcon(roles.find(r => r.roles.toString() === formData.role_id)?.name || '')}
-                        <span>{roles.find(r => r.roles.toString() === formData.role_id)?.name}</span>
+                        {getRoleIcon(roles.find((r: Role) => r.roles.toString() === formData.role_id)?.name || '')}
+                        <span>{roles.find((r: Role) => r.roles.toString() === formData.role_id)?.name}</span>
                       </div>
                     ) : (
                       "Chọn vai trò"
@@ -838,7 +832,6 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Chỉnh sửa người dùng */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
@@ -863,7 +856,7 @@ export default function UsersPage() {
           <div className="space-y-5 py-4">
             <div className="space-y-2">
               <Label htmlFor="edit-name" className="flex items-center gap-1">
-                Họ và tên <span className="text-red-500">*</span>
+                <span>Họ và tên</span> <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="edit-name"
@@ -885,7 +878,7 @@ export default function UsersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="edit-role" className="flex items-center gap-1">
-                Vai trò <span className="text-red-500">*</span>
+                <span>Vai trò</span> <span className="text-red-500">*</span>
               </Label>
               <Select 
                 value={editFormData.role_id} 
@@ -895,8 +888,8 @@ export default function UsersPage() {
                   <SelectValue placeholder="Chọn vai trò">
                     {editFormData.role_id && roles.length > 0 ? (
                       <div className="flex items-center gap-2">
-                        {getRoleIcon(roles.find(r => r.roles.toString() === editFormData.role_id)?.name || '')}
-                        <span>{roles.find(r => r.roles.toString() === editFormData.role_id)?.name}</span>
+                        {getRoleIcon(roles.find((r: Role) => r.roles.toString() === editFormData.role_id)?.name || '')}
+                        <span>{roles.find((r: Role) => r.roles.toString() === editFormData.role_id)?.name}</span>
                       </div>
                     ) : (
                       "Chọn vai trò"
@@ -1006,7 +999,6 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Thành công */}
       <Dialog open={isSuccessDialogOpen} onOpenChange={setIsSuccessDialogOpen}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
@@ -1101,8 +1093,11 @@ export default function UsersPage() {
                   <div>
                     <p className="text-sm font-semibold text-amber-900 mb-1">Lưu ý quan trọng</p>
                     <p className="text-xs text-amber-800 leading-relaxed">
-                      Thông tin này chỉ hiển thị <strong>một lần duy nhất</strong>. Vui lòng sao chép và gửi cho người dùng ngay. 
-                      Người dùng có thể đổi mật khẩu sau khi đăng nhập lần đầu.
+                      Thông tin này chỉ hiển thị <strong>một lần duy nhất</strong>. 
+                      Vui lòng sao chép và gửi cho người dùng ngay qua email hoặc các kênh liên lạc khác.
+                      <br/><br/>
+                      Người dùng có thể đăng nhập bằng email và mật khẩu này tại trang <strong>/login</strong>.
+                      Khuyến nghị người dùng đổi mật khẩu sau khi đăng nhập lần đầu.
                     </p>
                   </div>
                 </div>
@@ -1126,7 +1121,6 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Lịch sử hoạt động */}
       <Dialog open={isActivityDialogOpen} onOpenChange={setIsActivityDialogOpen}>
         <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
           <div className="flex items-center justify-between border-b pb-4">

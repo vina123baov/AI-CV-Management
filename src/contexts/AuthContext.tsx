@@ -9,8 +9,24 @@ type SignUpOptions = {
   }
 };
 
+// ✅ FIXED: Added user_metadata to CustomUser
+type CustomUser = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+  authenticated_at?: string;
+  isCustomAuth: true;
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+    [key: string]: any;
+  };
+};
+
 type AuthContextType = {
-  user: User | null;
+  user: User | CustomUser | null;
   profile: any | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<any>;
@@ -23,29 +39,31 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | CustomUser | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Prevent double initialization
   const initialized = useRef(false);
-  
-  // Keep track of current user to prevent duplicate updates on tab focus
-  const userRef = useRef<User | null>(null);
+  const userRef = useRef<User | CustomUser | null>(null);
+  const authTypeRef = useRef<'custom' | 'supabase' | null>(null);
 
-  // Update ref whenever user changes
   useEffect(() => {
     userRef.current = user;
   }, [user]);
 
-  // Helper function to fetch profile by auth_user_id
-  const fetchProfile = async (authUserId: string) => {
+  const fetchProfileByAuthId = async (authUserId: string) => {
     try {
-      console.log("📋 Fetching user profile for auth_user_id:", authUserId);
-      
       const { data: prof, error } = await supabase
         .from("cv_profiles")
-        .select("*")
+        .select(`
+          *,
+          cv_user_roles (
+            role_id,
+            cv_roles (
+              name
+            )
+          )
+        `)
         .eq("auth_user_id", authUserId)
         .maybeSingle();
       
@@ -54,7 +72,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
       
-      console.log("✅ User profile:", prof ? "Found" : "Not found");
       return prof || null;
     } catch (err) {
       console.error("❌ Profile fetch exception:", err);
@@ -62,11 +79,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Helper function to create profile
+  const fetchProfileById = async (userId: string) => {
+    try {
+      const { data: prof, error } = await supabase
+        .from("cv_profiles")
+        .select(`
+          *,
+          cv_user_roles (
+            role_id,
+            cv_roles (
+              name
+            )
+          )
+        `)
+        .eq("id", userId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("❌ Profile fetch error:", error);
+        return null;
+      }
+      
+      return prof || null;
+    } catch (err) {
+      console.error("❌ Profile fetch exception:", err);
+      return null;
+    }
+  };
+
   const createProfile = async (authUserId: string, email: string, fullName?: string) => {
     try {
-      console.log("📝 Creating new profile for:", email);
-      
       const { data: newProfile, error } = await supabase
         .from("cv_profiles")
         .insert([
@@ -86,7 +128,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw error;
       }
       
-      console.log("✅ Profile created successfully");
       return newProfile;
     } catch (err) {
       console.error("❌ Profile creation exception:", err);
@@ -94,10 +135,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ⚠️ CRITICAL FIX: Always clear session on init
+  const clearCustomSession = () => {
+    console.log("🧹 Clearing custom session");
+    localStorage.removeItem('user_session');
+    localStorage.removeItem('is_authenticated');
+    localStorage.removeItem('session_timestamp');
+  };
+
   useEffect(() => {
-    // Run only once - prevent double initialization
     if (initialized.current) {
-      console.log("⏭️ Auth already initialized, skipping");
       return;
     }
     initialized.current = true;
@@ -108,6 +155,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log("🔐 Initializing auth...");
         
+        // ⚠️ CRITICAL FIX: Always clear custom session on app start
+        // User MUST login every time - no auto-login
+        clearCustomSession();
+        
+        // Check Supabase Auth session only
+        console.log('🔍 Checking Supabase Auth session...');
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -117,23 +170,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!mounted) return;
 
         if (session?.user) {
-          console.log("✅ Session found:", session.user.email);
+          console.log("✅ Supabase session found:", session.user.email);
           setUser(session.user);
           userRef.current = session.user;
+          authTypeRef.current = 'supabase';
           
-          // Fetch user's profile
-          const prof = await fetchProfile(session.user.id);
+          const prof = await fetchProfileByAuthId(session.user.id);
           if (mounted) {
             setProfile(prof);
           }
         } else {
-          console.log("ℹ️ No session found");
+          console.log("ℹ️ No valid session found - user must login");
           setUser(null);
           setProfile(null);
           userRef.current = null;
+          authTypeRef.current = null;
         }
       } catch (err) {
         console.error("❌ Auth init error:", err);
+        clearCustomSession();
       } finally {
         if (mounted) {
           console.log("✅ Auth initialization complete");
@@ -142,40 +197,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    initAuth();
+    const initTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn("⚠️ Auth init timeout");
+        setLoading(false);
+      }
+    }, 3000);
 
-    // Listen to auth changes
+    initAuth().finally(() => {
+      clearTimeout(initTimeout);
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("🔄 Auth event:", event);
+        console.log("🔄 Supabase Auth event:", event);
 
         if (!mounted) return;
 
+        if (authTypeRef.current === 'custom') {
+          console.log("⏭️ Ignoring Supabase auth event - using custom auth");
+          return;
+        }
+
         if (event === 'SIGNED_IN' && session?.user) {
-          // Prevent duplicate updates when tab becomes active
           if (userRef.current && userRef.current.id === session.user.id) {
-            console.log("⏭️ User already signed in, skipping duplicate SIGNED_IN event");
             return;
           }
           
-          console.log("✅ User signed in (new or different user)");
           setUser(session.user);
           userRef.current = session.user;
+          authTypeRef.current = 'supabase';
           
-          const prof = await fetchProfile(session.user.id);
+          const prof = await fetchProfileByAuthId(session.user.id);
           if (mounted) {
             setProfile(prof);
           }
         } else if (event === 'SIGNED_OUT') {
-          console.log("👋 User signed out");
-          setUser(null);
-          setProfile(null);
-          userRef.current = null;
-        } else if (event === 'TOKEN_REFRESHED') {
-          console.log("🔄 Token refreshed (no state update needed)");
+          if (authTypeRef.current === 'supabase') {
+            setUser(null);
+            setProfile(null);
+            userRef.current = null;
+            authTypeRef.current = null;
+          }
         } else if (event === 'USER_UPDATED') {
-          console.log("👤 User updated");
-          if (session?.user) {
+          if (session?.user && authTypeRef.current === 'supabase') {
             setUser(session.user);
             userRef.current = session.user;
           }
@@ -184,30 +249,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => {
-      console.log("🧹 Cleaning up AuthProvider");
       mounted = false;
+      clearTimeout(initTimeout);
       subscription?.unsubscribe();
     };
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    console.log("🔑 Signing in:", email);
+    console.log("🔑 Attempting sign in:", email);
     
     try {
-      const result = await supabase.auth.signInWithPassword({ email, password });
+      // ⚠️ TEMPORARY: Skip RPC completely, use Supabase Auth only
+      console.log("🔍 Using Supabase Auth (RPC disabled)...");
+      
+      const result = await supabase.auth.signInWithPassword({ 
+        email: email.trim(), 
+        password 
+      });
+      
+      console.log("📥 Supabase Auth result:", result);
       
       if (result.error) {
-        console.error("❌ Sign in error:", result.error);
-        return { data: null, error: result.error };
+        console.error("❌ Supabase Auth failed:", result.error);
+        return { data: null, error: { message: 'Email hoặc mật khẩu không chính xác' } };
       }
       
-      console.log("✅ Sign in successful");
+      console.log("✅ Supabase Auth successful");
+      authTypeRef.current = 'supabase';
+      
+      // ⚠️ CRITICAL FIX: Ensure profile exists for Supabase Auth users
+      if (result.data.user) {
+        console.log("🔍 Checking if profile exists...");
+        let prof = await fetchProfileByAuthId(result.data.user.id);
+        
+        if (!prof) {
+          console.log("📝 Profile not found, creating...");
+          try {
+            prof = await createProfile(
+              result.data.user.id,
+              result.data.user.email || '',
+              result.data.user.user_metadata?.full_name
+            );
+            console.log("✅ Profile created:", prof);
+          } catch (createError) {
+            console.error("❌ Failed to create profile:", createError);
+          }
+        } else {
+          console.log("✅ Profile exists:", prof);
+        }
+        
+        // Set profile state
+        setProfile(prof);
+      }
+      
       return { data: result.data, error: null };
+      
     } catch (err) {
       console.error("❌ Sign in exception:", err);
       return { 
         data: null, 
-        error: err instanceof Error ? err : new Error("Unknown error") 
+        error: { message: "Có lỗi xảy ra khi đăng nhập. Vui lòng thử lại." }
       };
     }
   };
@@ -216,29 +317,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log("👋 Signing out");
     
     try {
+      // Clear state first
       setUser(null);
       setProfile(null);
       userRef.current = null;
       
-      const { error } = await supabase.auth.signOut();
+      // Clear all session data
+      clearCustomSession();
       
-      if (error) {
-        console.error("❌ Sign out error:", error);
-      } else {
-        console.log("✅ Signed out successfully");
+      // Only sign out from Supabase if using Supabase auth
+      if (authTypeRef.current === 'supabase') {
+        console.log("📤 Signing out from Supabase Auth");
+        await supabase.auth.signOut();
       }
+      
+      authTypeRef.current = null;
+      console.log("✅ Signed out successfully");
     } catch (err) {
       console.error("❌ Sign out exception:", err);
-      setUser(null);
-      setProfile(null);
-      userRef.current = null;
+      clearCustomSession();
     }
   };
 
   const signUp = async (email: string, password: string, options?: SignUpOptions) => {
     try {
-      console.log("📝 Signing up:", email);
-      
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -250,18 +352,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (authError) {
-        console.error("❌ Auth sign up error:", authError);
         return { data: null, error: authError };
       }
 
       if (!authData.user) {
-        console.error("❌ No user returned from sign up");
         return { data: null, error: new Error("No user returned") };
       }
 
-      console.log("✅ Auth user created:", authData.user.id);
-
-      let existingProfile = await fetchProfile(authData.user.id);
+      let existingProfile = await fetchProfileByAuthId(authData.user.id);
       
       if (!existingProfile) {
         try {
@@ -279,12 +377,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(authData.user);
       setProfile(existingProfile);
       userRef.current = authData.user;
+      authTypeRef.current = 'supabase';
 
-      console.log("✅ Sign up complete");
       return { data: authData, error: null };
       
     } catch (err) {
-      console.error("❌ Sign up exception:", err);
       return { 
         data: null, 
         error: err instanceof Error ? err : new Error("Unknown error") 
@@ -292,25 +389,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // CRITICAL FIX: Update profile with proper data merging
   const updateProfile = async (data: any) => {
     if (!user) {
-      console.error("❌ No authenticated user");
       return { error: new Error("No authenticated user") };
     }
     
-    console.log("💾 Updating profile for user:", user.id);
-    console.log("📦 Update payload:", data);
-    console.log("📦 Current profile:", profile);
-    
     try {
-      // CRITICAL: Merge with existing profile data to avoid null constraint violations
+      const isCustomAuthUser = 'isCustomAuth' in user && user.isCustomAuth;
+      
       const mergedData = {
-        auth_user_id: user.id,
+        ...(isCustomAuthUser ? { id: user.id } : { auth_user_id: user.id }),
         email: user.email || '',
         full_name: data.full_name !== undefined 
           ? data.full_name 
-          : (profile?.full_name || user.user_metadata?.full_name || ''),
+          : (profile?.full_name || ''),
         phone: data.phone !== undefined 
           ? data.phone 
           : (profile?.phone || ''),
@@ -320,15 +412,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updated_at: new Date().toISOString()
       };
 
-      console.log("📦 Merged data for upsert:", mergedData);
-
-      // Use upsert to handle both insert and update
       const { data: result, error } = await supabase
         .from("cv_profiles")
         .upsert(
           mergedData,
           {
-            onConflict: 'auth_user_id',
+            onConflict: isCustomAuthUser ? 'id' : 'auth_user_id',
             ignoreDuplicates: false
           }
         )
@@ -336,16 +425,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        console.error("❌ Upsert error:", error);
         throw error;
       }
 
-      console.log("✅ Profile updated/created successfully:", result);
       setProfile(result);
+      
+      // Update custom session if applicable
+      if (isCustomAuthUser) {
+        const currentSession = localStorage.getItem('user_session');
+        if (currentSession) {
+          const sessionData = JSON.parse(currentSession);
+          const updatedSession = {
+            ...sessionData,
+            full_name: result.full_name
+          };
+          localStorage.setItem('user_session', JSON.stringify(updatedSession));
+        }
+      }
+      
       return { data: result, error: null };
       
     } catch (err) {
-      console.error("❌ Update failed:", err);
       return { 
         data: null, 
         error: err instanceof Error ? err : new Error("Unknown error") 
