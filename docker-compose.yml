@@ -1,19 +1,34 @@
 version: '3.8'
 
 services:
+  frontend:
+    container_name: ai-cv-frontend
+    build:
+      context: .                          # ← Thư mục gốc
+      dockerfile: ./Dockerfile            # ← Đường dẫn tuyệt đối từ context
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
   backend:
-    build: ./backend
     container_name: ai-cv-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - PORT=8000
-      - SUPABASE_URL=http://supabase_kong_CV-Management:8000
-      - SUPABASE_KEY=your_supabase_anon_key
+      - DATABASE_URL=${DATABASE_URL:-postgresql://user:pass@db:5432/dbname}
     networks:
-      - cv-management-network
+      - app-network
 
 networks:
-  cv-management-network:
-    external: true
-    name: supabase_network_CV-Management
+  app-network:
+    driver: bridge
