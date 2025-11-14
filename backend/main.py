@@ -575,4 +575,29 @@ Return JSON:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    import sys
+    
+    port = int(os.getenv("PORT", 8000))
+    
+    print(f"=" * 60)
+    print(f"🚀 CV Management API Starting...")
+    print(f"📍 Host: 0.0.0.0")
+    print(f"🔌 Port: {port}")
+    print(f"🔑 OpenRouter API Key: {'✅ Configured' if OPENROUTER_API_KEY else '❌ Missing'}")
+    print(f"=" * 60)
+    sys.stdout.flush()
+    
+    try:
+        uvicorn.run(
+            app, 
+            host="0.0.0.0", 
+            port=port, 
+            log_level="info",
+            access_log=True,
+            timeout_keep_alive=300
+        )
+    except Exception as e:
+        print(f"❌ FATAL ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
