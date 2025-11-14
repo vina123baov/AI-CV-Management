@@ -2,21 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    poppler-utils \
-    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy requirements
-COPY requirements.txt /app/requirements.txt
+COPY . .
 
-# Install Python packages
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# Copy application code
-COPY . /app
+# Allow environment variable PORT (Railway provides this)
+ENV PORT=8000
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["bash", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
