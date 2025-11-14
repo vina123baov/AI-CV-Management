@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: ai-cv-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - SUPABASE_URL=http://supabase_kong_CV-Management:8000
+      - SUPABASE_KEY=your_supabase_anon_key
+    networks:
+      - cv-management-network
+
+networks:
+  cv-management-network:
+    external: true
+    name: supabase_network_CV-Management
