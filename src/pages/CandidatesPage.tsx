@@ -301,7 +301,7 @@ export function CandidatesPage() {
         foundInfo.push(`📧 Email: ${parsed.email}`);
         filledCount++;
       } else {
-        console.log('❌ Không tìm thấy Email');
+        console.log(' Không tìm thấy Email');
       }
 
       if (parsed.phone) {
