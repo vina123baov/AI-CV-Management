@@ -7,10 +7,15 @@ export const useActivityLogger = () => {
 
   const logActivity = async (action: string, details?: string) => {
     try {
-      const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Unknown User';
+      if (!user) {
+        console.warn('User is not authenticated');
+        return;
+      }
+
+      const userName = (user as any).user_metadata?.full_name || user.email;
       
       await supabase.from('activity_logs').insert({
-        user_id: user?.id,
+        user_id: user.id,
         user_name: userName,
         action,
         details,

@@ -9,6 +9,7 @@ type SignUpOptions = {
   }
 };
 
+// ✅ FIXED: Added user_metadata to CustomUser
 type CustomUser = {
   id: string;
   email: string;
@@ -17,6 +18,11 @@ type CustomUser = {
   status: string;
   authenticated_at?: string;
   isCustomAuth: true;
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+    [key: string]: any;
+  };
 };
 
 type AuthContextType = {
