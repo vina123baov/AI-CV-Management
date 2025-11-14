@@ -2,13 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements with absolute path
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
 COPY requirements.txt /app/requirements.txt
 
-# Install dependencies
+# Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy all code
+# Copy application code
 COPY . /app
 
 EXPOSE 8000
