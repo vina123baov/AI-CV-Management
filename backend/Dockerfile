@@ -13,5 +13,5 @@ COPY . .
 ENV PORT=8000
 EXPOSE $PORT
 
-# ✅ ĐÚNG - Đọc port từ biến môi trường
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# port từ biến môi trường
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}

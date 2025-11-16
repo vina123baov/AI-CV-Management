@@ -1,9 +1,3 @@
-"""
-Backend API for CV Management System
-Uses OpenRouter AI for both CV parsing and job matching
-✅ UPDATED: Đọc chính xác hơn các trường thông tin từ database
-"""
-
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,8 +15,13 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+# ✅ FIXED: Không raise error, chỉ warning để app vẫn start được
 if not OPENROUTER_API_KEY:
-    raise ValueError("OPENROUTER_API_KEY not found in environment variables")
+    print("=" * 60)
+    print("⚠️  WARNING: OPENROUTER_API_KEY not found!")
+    print("⚠️  Please set this environment variable on Railway")
+    print("⚠️  API endpoints will return errors until configured")
+    print("=" * 60)
 
 app = FastAPI(
     title="CV Management API",
@@ -71,6 +70,13 @@ class MatchCVJobsRequest(BaseModel):
 # ==================== HELPERS ====================
 
 def call_openrouter_api(messages: List[dict], model: str = "openai/gpt-4o-mini", temperature: float = 0.7, max_tokens: int = 4000) -> dict:
+    # ✅ FIXED: Check API key trước khi gọi
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenRouter API key not configured. Please contact administrator."
+        )
+    
     try:
         response = requests.post(
             f"{OPENROUTER_BASE_URL}/chat/completions",
@@ -86,7 +92,7 @@ def call_openrouter_api(messages: List[dict], model: str = "openai/gpt-4o-mini",
                 "temperature": temperature,
                 "max_tokens": max_tokens
             },
-            timeout=60
+            timeout=30  # ✅ FIXED: Giảm từ 60s xuống 30s
         )
         
         if response.status_code != 200:
@@ -121,11 +127,24 @@ def extract_json_from_response(content: str) -> dict:
 
 @app.get("/")
 async def root():
-    return {"message": "CV Management API", "version": "1.0.0", "status": "running"}
+    return {
+        "message": "CV Management API",
+        "version": "1.0.0",
+        "status": "running",
+        "openrouter_configured": bool(OPENROUTER_API_KEY)
+    }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "openrouter_configured": bool(OPENROUTER_API_KEY)}
+    """
+    ✅ FIXED: Simple healthcheck for Railway
+    Không test external API để tránh timeout
+    """
+    return {
+        "status": "healthy",
+        "service": "ai-cv-backend",
+        "openrouter_configured": bool(OPENROUTER_API_KEY)
+    }
 
 @app.post("/api/parse-cv")
 async def parse_cv(file: UploadFile = File(None), cv_file: UploadFile = File(None)):
@@ -223,9 +242,6 @@ Return this structure:
 async def match_cv_jobs(request: MatchCVJobsRequest):
     """
     ✅ UPDATED LOGIC: Đọc chính xác hơn các trường DB và mapping đúng với job
-    1. Check mandatory FIRST (đọc kỹ từng trường DB)
-    2. If NOT met → Penalty -50 điểm NGAY
-    3. Score trên base còn lại (base 50 nếu failed, base 100 nếu passed)
     """
     try:
         print(f"\n🎯 ===== CV-JOB MATCHING START =====")
@@ -301,123 +317,20 @@ Bằng cấp/Chuyên ngành: {request.cv_data.education or 'Không có thông ti
 
 📄 NỘI DUNG CV TOÀN VĂN (ĐỌC KỸ ĐỂ TÌM BẰNG CHỨNG)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{request.cv_text[:4000]}
-
-⚠️ LƯU Ý QUAN TRỌNG:
-- ĐỌC KỸ TẤT CẢ CÁC TRƯỜNG THÔNG TIN TRÊN
-- TÌM KIẾM BẰNG CHỨNG CỤ THỂ trong CV để xác nhận yêu cầu bắt buộc
-- So sánh CHI TIẾT với từng yêu cầu của công việc
-- Chú ý đến TÊN TRƯỜNG, BẰNG CẤP, KỸ NĂNG, KINH NGHIỆM cụ thể
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+{request.cv_text[:4000]}"""
         
         messages = [
             {
                 "role": "system",
-                "content": """Bạn là chuyên gia HR với 15+ năm kinh nghiệm.
-
-QUY TRÌNH CHẤM ĐIỂM CHÍNH XÁC:
-
-CHO MỖI CÔNG VIỆC, LÀM THEO THỨ TỰ SAU:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BƯỚC 1: KIỂM TRA YÊU CẦU BẮT BUỘC TRƯỚC (Ưu tiên cao nhất)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-NẾU công việc có "⚠️ YÊU CẦU BẮT BUỘC (MANDATORY)":
-
-a) Đọc KỸ TẤT CẢ thông tin ứng viên:
-   - Trường "Trường đại học" 
-   - Trường "Bằng cấp/Chuyên ngành"
-   - Text "Kinh nghiệm làm việc & Kỹ năng"
-   - "Nội dung CV toàn văn"
-   - Tìm keyword chính xác, tên trường, bằng cấp, kỹ năng
-
-b) Tìm bằng chứng cụ thể:
-   - Yêu cầu "Tốt nghiệp Đại học": Tìm tên trường, bachelor, cử nhân, đại học
-   - Yêu cầu "Python": Tìm từ khóa Python trong skills/kinh nghiệm
-   - Yêu cầu "3 năm kinh nghiệm": Tính từ ngày tháng hoặc mô tả rõ ràng
-   - Yêu cầu "CNTT": Tìm Công nghệ thông tin, Computer Science, IT
-
-c) Quyết định:
-   ✅ TÌM THẤY bằng chứng → Ứng viên ĐÁP ỨNG → Chuyển sang BƯỚC 2A
-   ❌ KHÔNG tìm thấy → Ứng viên KHÔNG ĐÁP ỨNG → Chuyển sang BƯỚC 2B
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BƯỚC 2A: CHẤM ĐIỂM TRÊN BASE 100 (Nếu đáp ứng hoặc không có yêu cầu bắt buộc)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Chấm điểm bình thường theo thang 100:
-- Kinh nghiệm phù hợp: 0-30 điểm
-- Kỹ năng kỹ thuật: 0-25 điểm
-- Học vấn: 0-15 điểm
-- Level phù hợp: 0-15 điểm
-- Địa điểm: 0-10 điểm
-- Kỹ năng mềm: 0-5 điểm
-
-Điểm cuối = Tổng (0-100)
-Điểm yếu: Các điểm yếu thông thường (KHÔNG liên quan mandatory)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BƯỚC 2B: ÁP DỤNG PENALTY VÀ CHẤM TRÊN BASE 50 (Nếu KHÔNG đáp ứng bắt buộc)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Áp dụng penalty NGAY LẬP TỨC:
-- Base điểm giảm: 100 → 50
-- Điểm tối đa có thể: 50
-
-SAU ĐÓ chấm trên BASE MỚI (thang 50):
-- Kinh nghiệm phù hợp: 0-15 điểm (giảm 50%)
-- Kỹ năng kỹ thuật: 0-12 điểm (giảm 50%)
-- Học vấn: 0-8 điểm (giảm 50%)
-- Level phù hợp: 0-8 điểm (giảm 50%)
-- Địa điểm: 0-5 điểm (giảm 50%)
-- Kỹ năng mềm: 0-2 điểm (giảm 50%)
-
-Điểm cuối = Tổng (0-50 tối đa)
-Điểm yếu: PHẢI có "Ứng viên không đáp ứng yêu cầu bắt buộc: [yêu cầu cụ thể]" + các điểm yếu khác
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-QUAN TRỌNG: Với JOB ⭐ PRIMARY (job ứng viên đã apply):
-- Đánh giá CHI TIẾT HỖN hơn
-- Đây là job ứng viên QUAN TÂM - phải đánh giá kỹ lưỡng
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Trả về ONLY valid JSON."""
+                "content": """Bạn là chuyên gia HR với 15+ năm kinh nghiệm. Phân tích CV và matching với công việc. Return ONLY valid JSON."""
             },
             {
                 "role": "user",
-                "content": f"""Phân tích CV và matching với các công việc theo QUY TRÌNH CHÍNH XÁC:
+                "content": f"""Phân tích CV và matching với các công việc:
 
 {cv_context}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CÁC CÔNG VIỆC CẦN MATCHING:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 {jobs_text}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-CHO MỖI CÔNG VIỆC, ÁP DỤNG QUY TRÌNH:
-
-VÍ DỤ MINH HỌA:
-
-Ví dụ 1: Job yêu cầu "Tốt nghiệp Đại học" + Ứng viên có "university: HUST"
-→ Bắt buộc: ĐÁP ỨNG ✅
-→ Base điểm: 100
-→ Tính: 28 (exp) + 23 (skills) + 15 (edu) + 12 (level) + 8 (loc) + 3 (soft) = 89
-→ Kết quả: 89/100
-→ Điểm yếu: ["Thiếu kinh nghiệm quản lý nhóm"]
-
-Ví dụ 2: Job yêu cầu "Tốt nghiệp Đại học" + Ứng viên university: null, education: null
-→ Bắt buộc: KHÔNG ĐÁP ỨNG ❌
-→ Penalty: -50 NGAY LẬP TỨC
-→ Base điểm mới: 50 tối đa
-→ Tính trên base 50: 12 (exp) + 10 (skills) + 0 (edu) + 6 (level) + 4 (loc) + 2 (soft) = 34
-→ Kết quả: 34/50
-→ Điểm yếu: ["Ứng viên không đáp ứng yêu cầu bắt buộc: Tốt nghiệp Đại học", "Thiếu kinh nghiệm cloud"]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Trả về JSON:
 {{
@@ -426,33 +339,12 @@ Trả về JSON:
     "job_id": "uuid",
     "job_title": "Tên công việc",
     "match_score": 88,
-    "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+    "strengths": ["điểm mạnh 1", "điểm mạnh 2"],
     "weaknesses": ["điểm yếu 1", "điểm yếu 2"],
-    "recommendation": "Nhận xét chi tiết 80-120 từ"
+    "recommendation": "Nhận xét chi tiết"
   }},
-  "all_matches": [
-    {{
-      "job_id": "uuid-1",
-      "job_title": "Job 1",
-      "match_score": 88,
-      "strengths": ["s1", "s2", "s3"],
-      "weaknesses": ["w1", "w2"],
-      "recommendation": "..."
-    }}
-  ]
-}}
-
-LƯU Ý QUAN TRỌNG:
-- Đọc KỸ TẤT CẢ các trường: university, education, experience, fullText
-- Kiểm tra yêu cầu bắt buộc TRƯỚC KHI chấm điểm
-- Áp dụng penalty -50 NGAY nếu không đáp ứng
-- Chấm điểm trên base 50 (KHÔNG phải base 100) sau khi penalty
-- Thêm "Ứng viên không đáp ứng yêu cầu bắt buộc" vào điểm yếu
-- Tìm kiếm kỹ lưỡng bằng chứng trong CV
-- Sắp xếp all_matches theo match_score giảm dần
-- PHẢI trả về đầy đủ overall_score, best_match, all_matches
-- best_match là job có điểm match_score CAO NHẤT
-- Nếu có PRIMARY job, ưu tiên đánh giá kỹ hơn"""
+  "all_matches": [...]
+}}"""
             }
         ]
         
@@ -463,35 +355,29 @@ LƯU Ý QUAN TRỌNG:
         print(f"✅ OpenRouter responded")
         
         content = result['choices'][0]['message']['content']
-        print(f"📄 Raw AI response: {content[:200]}...")
-        
         analysis_data = extract_json_from_response(content)
         
-        # Validate and ensure required fields exist
+        # Validate required fields
         if not isinstance(analysis_data, dict):
             raise ValueError("AI response is not a valid dictionary")
         
         if not analysis_data.get('best_match'):
-            print(f"⚠️  Missing best_match, creating fallback")
             analysis_data['best_match'] = {
                 "job_id": request.jobs[0].id,
                 "job_title": request.jobs[0].title,
                 "match_score": 0,
-                "strengths": ["Không thể phân tích - vui lòng thử lại"],
+                "strengths": ["Không thể phân tích"],
                 "weaknesses": ["Lỗi hệ thống"],
-                "recommendation": "Vui lòng thử lại sau."
+                "recommendation": "Vui lòng thử lại."
             }
         
         if not analysis_data.get('all_matches'):
-            print(f"⚠️  Missing all_matches, creating from best_match")
             analysis_data['all_matches'] = [analysis_data['best_match']]
         
         if 'overall_score' not in analysis_data:
             analysis_data['overall_score'] = analysis_data.get('best_match', {}).get('match_score', 0)
         
         print(f"✅ Overall score: {analysis_data.get('overall_score', 'N/A')}")
-        print(f"🎯 Best match: {analysis_data.get('best_match', {}).get('job_title', 'N/A')}")
-        print(f"📊 All matches: {len(analysis_data.get('all_matches', []))}")
         print(f"===== CV-JOB MATCHING END =====\n")
         
         return {
@@ -505,8 +391,6 @@ LƯU Ý QUAN TRỌNG:
         raise
     except Exception as e:
         print(f"❌ Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error matching: {str(e)}")
 
 class GenerateJobDescriptionRequest(BaseModel):
@@ -533,19 +417,19 @@ Location: {request.work_location or 'Remote'}"""
         if request.keywords:
             job_context += f"\nRequired Skills: {request.keywords}"
         
-        lang_instruction = "Write the job description in Vietnamese language." if request.language == "vietnamese" else "Write the job description in English language."
+        lang_instruction = "Write in Vietnamese." if request.language == "vietnamese" else "Write in English."
         
         messages = [
             {"role": "system", "content": f"You are a professional HR specialist. {lang_instruction} Return ONLY valid JSON."},
-            {"role": "user", "content": f"""Create a detailed job description:
+            {"role": "user", "content": f"""Create job description:
 
 {job_context}
 
 Return JSON:
 {{
-  "description": "Detailed job description (150-250 words)",
-  "requirements": "• Requirement 1\\n• Requirement 2\\n...",
-  "benefits": "• Benefit 1\\n• Benefit 2\\n..."
+  "description": "Detailed description",
+  "requirements": "• Requirement 1\\n• Requirement 2",
+  "benefits": "• Benefit 1\\n• Benefit 2"
 }}"""}
         ]
         
@@ -555,26 +439,26 @@ Return JSON:
         job_data = extract_json_from_response(content)
         
         if not all(key in job_data for key in ['description', 'requirements', 'benefits']):
-            raise HTTPException(status_code=500, detail="Invalid AI response structure")
+            raise HTTPException(status_code=500, detail="Invalid AI response")
         
-        print(f"✅ Generated job description successfully")
-        print(f"===== JOB DESCRIPTION GENERATION END =====\n")
+        print(f"✅ Generated successfully")
+        print(f"===== END =====\n")
         
         return {
             "success": True,
             "data": job_data,
-            "message": "Job description generated successfully",
-            "metadata": {"model": "gpt-4o-mini", "language": request.language}
+            "message": "Job description generated",
+            "metadata": {"model": "gpt-4o-mini"}
         }
     
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating job description: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
-
-    port = int(os.getenv("PORT", 8000))  # Đọc PORT từ Railway
+    port = int(os.getenv("PORT", 8000))
+    print(f"\n🚀 Starting server on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
