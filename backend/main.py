@@ -575,10 +575,6 @@ Return JSON:
 
 if __name__ == "__main__":
     import uvicorn
-<<<<<<< HEAD
-    port = int(os.getenv("PORT", 8000))
-    logger.info(f"Starting on port {port}")  # THÊM: Log start
-=======
+
     port = int(os.getenv("PORT", 8000))  # Đọc PORT từ Railway
->>>>>>> origin/Quang
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

@@ -30,18 +30,18 @@ export function ProfileSettingsPage() {
   })
 
   // Load profile data when user or profile changes
-  useEffect(() => {
-    if (user) {
-      
-      setProfileData({
-        full_name: profile?.full_name || user.user_metadata?.full_name || '',
-        email: user.email || '',
-        phone: profile?.phone || user.user_metadata?.phone || '',
-        avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || ''
+    useEffect(() => {
+      if (user) {
+        const metadata = (user as any)?.user_metadata || {}
         
-      })
-    }
-  }, [user, profile])
+        setProfileData({
+          full_name: profile?.full_name || metadata.full_name || '',
+          email: user.email || '',
+          phone: profile?.phone || metadata.phone || '',
+          avatar_url: profile?.avatar_url || metadata.avatar_url || ''
+        })
+      }
+    }, [user, profile])
 
   const getInitials = () => {
     if (profileData.full_name) {
