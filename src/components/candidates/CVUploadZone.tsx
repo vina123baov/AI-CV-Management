@@ -1,6 +1,7 @@
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X, Server } from 'lucide-react';
 import { useState, useEffect } from 'react';
-
+// ✅ FIX: Không cần import CVParserService nữa, dùng trực tiếp cvParser
+import { parseCV, validateCVFile, checkBackendHealth, type ParsedCV } from '@/utils/cvParser';
 
 interface CVUploadZoneProps {
   onFileSelect?: (file: File, parsed: ParsedCV) => void;
@@ -25,11 +26,11 @@ export default function CVUploadZone({
 
   // Check backend availability on mount
   useEffect(() => {
-    checkBackendHealth();
+    checkHealth();
   }, []);
 
-  const checkBackendHealth = async () => {
-    const isAvailable = await CVParserService.checkHealth();
+  const checkHealth = async () => {
+    const isAvailable = await checkBackendHealth();
     setBackendAvailable(isAvailable);
   };
 
@@ -63,21 +64,17 @@ export default function CVUploadZone({
   const handleFile = async (file: File) => {
     if (disabled) return;
 
-    const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
-    if (!validTypes.includes(file.type)) {
-      setError('Vui lòng upload file PDF hoặc ảnh (PNG, JPG, JPEG)');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File quá lớn. Vui lòng upload file nhỏ hơn 10MB');
+    // ✅ FIX: Dùng validateCVFile từ cvParser
+    const validation = validateCVFile(file);
+    if (!validation.valid) {
+      setError(validation.error || 'File không hợp lệ');
       return;
     }
 
     setUploadedFile(file);
     setError(null);
 
-    // Create preview for images
+    // Create preview for images (nếu cần)
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -88,10 +85,10 @@ export default function CVUploadZone({
       setPreview(null);
     }
 
-    // Parse CV using backend API
+    // ✅ FIX: Parse CV using parseCV từ cvParser
     setIsProcessing(true);
     try {
-      const parsedData = await CVParserService.parseCV(file);
+      const parsedData = await parseCV(file);
       setExtractedData(parsedData);
       
       // Callback to parent component
@@ -131,7 +128,7 @@ export default function CVUploadZone({
               <p className="text-red-600 text-sm">Vui lòng khởi động backend server hoặc kiểm tra kết nối</p>
             </div>
             <button
-              onClick={checkBackendHealth}
+              onClick={checkHealth}
               className="ml-auto px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
             >
               Thử lại
@@ -143,7 +140,7 @@ export default function CVUploadZone({
       {backendAvailable === true && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
           <Server className="w-5 h-5 text-green-600" />
-          <span className="text-green-700">Backend API đã sẵn sàng (LayoutLM v3)</span>
+          <span className="text-green-700">Backend API đã sẵn sàng</span>
         </div>
       )}
 
@@ -165,7 +162,7 @@ export default function CVUploadZone({
           type="file"
           id="cv-upload"
           className="hidden"
-          accept=".pdf,.png,.jpg,.jpeg"
+          accept=".pdf,.docx,.txt"
           onChange={handleChange}
           disabled={disabled || isProcessing || !backendAvailable}
         />
@@ -180,7 +177,7 @@ export default function CVUploadZone({
               Kéo thả CV vào đây hoặc click để chọn file
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              Hỗ trợ: PDF, PNG, JPG, JPEG (tối đa 10MB)
+              Hỗ trợ: PDF, DOCX, TXT (tối đa 5MB)
             </p>
           </label>
         ) : (
@@ -198,7 +195,7 @@ export default function CVUploadZone({
             {isProcessing && (
               <div className="flex items-center justify-center gap-2 text-blue-600">
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Đang phân tích CV với LayoutLM v3...</span>
+                <span>Đang phân tích CV với AI...</span>
               </div>
             )}
 
@@ -238,23 +235,26 @@ export default function CVUploadZone({
           <h3 className="text-xl font-bold">Thông tin đã trích xuất:</h3>
 
           {/* Quality Badge */}
-          <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-            extractedData.parseQuality === 'excellent' ? 'bg-green-100 text-green-800' :
-            extractedData.parseQuality === 'good' ? 'bg-blue-100 text-blue-800' :
-            extractedData.parseQuality === 'fair' ? 'bg-yellow-100 text-yellow-800' :
-            'bg-red-100 text-red-800'
-          }`}>
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Chất lượng: {extractedData.parseQuality === 'excellent' ? 'Xuất sắc' :
-                         extractedData.parseQuality === 'good' ? 'Tốt' :
-                         extractedData.parseQuality === 'fair' ? 'Khá' : 'Cần cải thiện'}
-          </div>
+          {extractedData.parseQuality && (
+            <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+              extractedData.parseQuality === 'excellent' ? 'bg-green-100 text-green-800' :
+              extractedData.parseQuality === 'good' ? 'bg-blue-100 text-blue-800' :
+              extractedData.parseQuality === 'fair' ? 'bg-yellow-100 text-yellow-800' :
+              'bg-red-100 text-red-800'
+            }`}>
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Chất lượng: {extractedData.parseQuality === 'excellent' ? 'Xuất sắc' :
+                           extractedData.parseQuality === 'good' ? 'Tốt' :
+                           extractedData.parseQuality === 'fair' ? 'Khá' : 'Cần cải thiện'}
+            </div>
+          )}
 
           {/* Extracted Fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* ✅ FIX: Đổi name thành fullName */}
             <div className="p-4 bg-white border rounded-lg shadow-sm">
               <h4 className="font-semibold text-gray-700 mb-2">Họ tên:</h4>
-              <p className="text-gray-900">{extractedData.name || 'N/A'}</p>
+              <p className="text-gray-900">{extractedData.fullName || 'N/A'}</p>
             </div>
             <div className="p-4 bg-white border rounded-lg shadow-sm">
               <h4 className="font-semibold text-gray-700 mb-2">Email:</h4>
@@ -281,6 +281,18 @@ export default function CVUploadZone({
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Warnings */}
+          {extractedData.warnings && extractedData.warnings.length > 0 && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <h4 className="font-semibold text-yellow-800 mb-2">⚠️ Cảnh báo:</h4>
+              <ul className="text-sm text-yellow-700 space-y-1">
+                {extractedData.warnings.map((warning, idx) => (
+                  <li key={idx}>• {warning}</li>
+                ))}
+              </ul>
             </div>
           )}
 
