@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { SkillsInput } from "@/components/ui/skills-input";
 import CVUploadZone  from "./CVUploadZone";
-import type { ParsedCV } from "@/utils/advancedCVParser";
+import type { ParsedCV } from "@/utils/cvParser";
 
 export interface CandidateFormData {
   full_name: string;
@@ -113,8 +113,8 @@ export function CandidateFormDialog({
     if (parsed.phone && !formData.phone_number) {
       handleInputChange('phone_number', parsed.phone);
     }
-    if (parsed.name && !formData.full_name) {
-      handleInputChange('full_name', parsed.name);
+    if (parsed.fullName && !formData.full_name) {
+      handleInputChange('full_name', parsed.fullName);
     }
     if (parsed.address && !formData.address) {
       handleInputChange('address', parsed.address);

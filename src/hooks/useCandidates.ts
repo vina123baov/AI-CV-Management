@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { saveCandidateSkills } from '@/utils/skillsHelper';
-import type { ParsedCV } from '@/utils/advancedCVParser';
+import type { ParsedCV } from '@/utils/cvParser';
 
 export interface Candidate {
   id: string;
