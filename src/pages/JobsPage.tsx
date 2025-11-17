@@ -48,6 +48,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabaseClient"
 
+// ==================== HELPER FUNCTIONS ====================
+
 const getStatusBadge = (status: string) => {
   switch (status) {
     case "Đã đăng":
@@ -60,6 +62,8 @@ const getStatusBadge = (status: string) => {
       return <Badge variant="secondary">{status}</Badge>
   }
 }
+
+// ==================== INTERFACES ====================
 
 interface Job {
   id: string;
@@ -78,7 +82,11 @@ interface Job {
   cv_candidates: { count: number }[];
 }
 
-// ==================== AI SERVICE FUNCTION ====================
+// ==================== AI SERVICE FUNCTIONS ====================
+
+/**
+ * Generate job description using AI
+ */
 async function generateJobDescriptionAI(data: {
   title: string;
   level: string;
@@ -124,12 +132,83 @@ async function generateJobDescriptionAI(data: {
   }
 }
 
+/**
+ * ✅ NEW FUNCTION - Generate interview questions using AI
+ */
+async function generateInterviewQuestionsAI(data: {
+  job_id: string;
+  job_title: string;
+  department: string;
+  level: string;
+  job_type?: string;
+  work_location?: string;
+  description?: string;
+  requirements?: string;
+  mandatory_requirements?: string;
+  language: string;
+}) {
+  try {
+    console.log('💬 Calling backend to generate interview questions...');
+    console.log('📋 Job details:', {
+      title: data.job_title,
+      department: data.department,
+      level: data.level
+    });
+    
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    
+    const response = await fetch(`${API_URL}/api/generate-interview-questions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log('📥 Backend response status:', response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Backend error:', errorData);
+      throw new Error(errorData.detail || `Backend error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Interview questions generated successfully');
+    console.log(`📊 Metadata:`, result.metadata);
+
+    if (result.success && result.data) {
+      return result.data;
+    }
+
+    throw new Error('Backend không trả về dữ liệu hợp lệ');
+
+  } catch (error) {
+    console.error('❌ Lỗi khi gọi backend:', error);
+    throw error;
+  }
+}
+
+// ==================== MAIN COMPONENT ====================
+
 export function JobsPage() {
   const { t, i18n } = useTranslation();
+  
+  // ==================== STATE MANAGEMENT ====================
+  
+  // Job list states
   const [jobs, setJobs] = useState<Job[]>([]);
   const [totalCandidatesCount, setTotalCandidatesCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  
+  // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isAIQuestionsDialogOpen, setIsAIQuestionsDialogOpen] = useState(false);
+  
+  // Create/Edit form states
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('manual');
   const [formData, setFormData] = useState({
     title: '',
@@ -145,27 +224,32 @@ export function JobsPage() {
     mandatory_requirements: '',
     posted_date: new Date().toISOString().split('T')[0]
   });
+  const [editFormData, setEditFormData] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [aiLanguage, setAiLanguage] = useState('vietnamese');
+  
+  // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
-
-  // States cho các chức năng khác
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isAIQuestionsDialogOpen, setIsAIQuestionsDialogOpen] = useState(false);
+  
+  // Selected job and actions
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [editFormData, setEditFormData] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // ✅ NEW STATES - AI Interview Questions
   const [aiQuestions, setAiQuestions] = useState('');
   const [generatingQuestions, setGeneratingQuestions] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [aiQuestionLanguage, setAiQuestionLanguage] = useState<'vietnamese' | 'english'>('vietnamese');
+
+  // ==================== LIFECYCLE HOOKS ====================
 
   useEffect(() => {
     fetchJobs();
   }, []);
+
+  // ==================== DATA FETCHING ====================
 
   async function fetchJobs() {
     setLoading(true);
@@ -195,6 +279,8 @@ export function JobsPage() {
     setLoading(false);
   }
 
+  // ==================== FORM HANDLERS ====================
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -203,7 +289,11 @@ export function JobsPage() {
     setEditFormData((prev: any) => ({ ...prev, [field]: value }));
   };
 
-  // ==================== AI GENERATE FUNCTION ====================
+  // ==================== AI GENERATION HANDLERS ====================
+
+  /**
+   * Handle AI Job Description Generation
+   */
   const handleAIGenerate = async () => {
     if (!formData.title || !formData.department) {
       alert('❌ Vui lòng điền đầy đủ: Tiêu đề vị trí và Phòng ban');
@@ -242,7 +332,74 @@ export function JobsPage() {
     }
   };
 
-  // ==================== SUBMIT FUNCTION (ĐÃ SỬA - BỎ created_by) ====================
+  /**
+   * ✅ NEW HANDLER - Generate Interview Questions with AI
+   */
+  const handleGenerateAIQuestions = async (job: Job) => {
+    console.log('🎯 Starting interview questions generation for:', job.title);
+    
+    setSelectedJob(job);
+    setIsAIQuestionsDialogOpen(true);
+    setGeneratingQuestions(true);
+    setAiQuestions('');
+
+    try {
+      console.log('📤 Calling AI service with job data...');
+      
+      // Call AI service with comprehensive job information
+      const result = await generateInterviewQuestionsAI({
+        job_id: job.id,
+        job_title: job.title,
+        department: job.department,
+        level: job.level,
+        job_type: job.job_type || 'Full-time',
+        work_location: job.work_location || job.location || 'Remote',
+        description: job.description || undefined,
+        requirements: job.requirements || undefined,
+        mandatory_requirements: job.mandatory_requirements || undefined,
+        language: aiQuestionLanguage
+      });
+
+      console.log('✅ Questions received from AI');
+      setAiQuestions(result.questions);
+      
+    } catch (error: any) {
+      console.error('❌ Error generating AI questions:', error);
+      
+      // User-friendly error message
+      const errorMessage = `Không thể tạo câu hỏi: ${error.message || 'Vui lòng thử lại sau'}`;
+      alert(`❌ ${errorMessage}`);
+      
+      // Set fallback message in dialog
+      setAiQuestions(`# ❌ Lỗi tạo câu hỏi\n\n${errorMessage}\n\nVui lòng thử lại hoặc liên hệ quản trị viên nếu lỗi tiếp tục xảy ra.`);
+      
+    } finally {
+      setGeneratingQuestions(false);
+      console.log('🏁 Interview questions generation process completed');
+    }
+  };
+
+  /**
+   * Copy AI generated questions to clipboard
+   */
+  const handleCopyAIQuestions = () => {
+    if (!aiQuestions) {
+      alert('⚠️ Không có câu hỏi để sao chép');
+      return;
+    }
+    
+    navigator.clipboard.writeText(aiQuestions)
+      .then(() => {
+        alert('✅ Đã sao chép câu hỏi vào clipboard!');
+      })
+      .catch((err) => {
+        console.error('Failed to copy:', err);
+        alert('❌ Không thể sao chép. Vui lòng thử lại.');
+      });
+  };
+
+  // ==================== FORM SUBMISSION ====================
+
   const handleSubmit = async () => {
     if (!formData.title || !formData.department) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc: Tiêu đề vị trí và Phòng ban');
@@ -321,6 +478,7 @@ export function JobsPage() {
       posted_date: new Date().toISOString().split('T')[0]
     });
   };
+  // ==================== CRUD OPERATIONS ====================
 
   const handleViewDetails = (job: Job) => {
     setSelectedJob(job);
@@ -419,49 +577,6 @@ export function JobsPage() {
     alert('✅ Đã sao chép link chia sẻ vào clipboard!');
   };
 
-  const handleGenerateAIQuestions = async (job: Job) => {
-    setSelectedJob(job);
-    setIsAIQuestionsDialogOpen(true);
-    setGeneratingQuestions(true);
-    setAiQuestions('');
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const mockQuestions = `# Câu hỏi phỏng vấn cho vị trí: ${job.title}
-
-## Phần 1: Kiến thức chuyên môn
-1. Hãy mô tả kinh nghiệm của bạn với các công nghệ liên quan đến vị trí ${job.title}?
-2. Bạn đã từng giải quyết vấn đề kỹ thuật phức tạp nào? Cách tiếp cận của bạn là gì?
-3. Trong dự án gần đây nhất, bạn đã đóng góp như thế nào?
-
-## Phần 2: Kỹ năng mềm
-4. Bạn xử lý xung đột trong team như thế nào?
-5. Hãy chia sẻ về một lần bạn phải làm việc dưới áp lực deadline gấp rút?
-6. Bạn cập nhật kiến thức mới trong lĩnh vực ${job.department} như thế nào?
-
-## Phần 3: Tình huống thực tế
-7. Nếu có một yêu cầu thay đổi đột xuất từ khách hàng, bạn sẽ xử lý ra sao?
-8. Làm thế nào bạn đảm bảo chất lượng công việc của mình?
-9. Bạn có kinh nghiệm làm việc với team remote không? Chia sẻ về điều đó?
-
-## Phần 4: Định hướng phát triển
-10. Mục tiêu nghề nghiệp của bạn trong 2-3 năm tới là gì?`;
-
-      setAiQuestions(mockQuestions);
-    } catch (error) {
-      console.error('Error generating AI questions:', error);
-      alert('❌ Lỗi khi tạo câu hỏi AI');
-    } finally {
-      setGeneratingQuestions(false);
-    }
-  };
-
-  const handleCopyAIQuestions = () => {
-    navigator.clipboard.writeText(aiQuestions);
-    alert('✅ Đã sao chép câu hỏi vào clipboard!');
-  };
-
   const handleDelete = (job: Job) => {
     setSelectedJob(job);
     setIsDeleteDialogOpen(true);
@@ -490,6 +605,8 @@ export function JobsPage() {
     setIsDeleting(false);
   };
 
+  // ==================== FILTERING ====================
+
   const filteredJobs = jobs.filter((job) => {
     const lowerQuery = searchQuery.toLowerCase();
     const matchesSearch =
@@ -506,8 +623,12 @@ export function JobsPage() {
     return matchesSearch && matchesStatus && matchesDepartment;
   });
 
+  // ==================== STATISTICS ====================
+
   const totalJobs = jobs.length;
   const openJobs = jobs.filter(job => job.status === 'Đã đăng' || job.status === 'Published').length;
+
+  // ==================== RENDER ====================
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 space-y-6">
@@ -1315,28 +1436,154 @@ export function JobsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Câu hỏi AI */}
+      {/* ==================== ✅ NEW DIALOG - AI INTERVIEW QUESTIONS ==================== */}
       <Dialog open={isAIQuestionsDialogOpen} onOpenChange={setIsAIQuestionsDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600" />
-              Câu hỏi phỏng vấn AI cho: {selectedJob?.title}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  Câu hỏi phỏng vấn AI
+                </DialogTitle>
+                {selectedJob && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {selectedJob.title} • {selectedJob.department} • {selectedJob.level}
+                  </p>
+                )}
+              </div>
+              
+              {/* Language selector - only show before generating */}
+              {!generatingQuestions && !aiQuestions && (
+                <Select 
+                  value={aiQuestionLanguage} 
+                  onValueChange={(val) => setAiQuestionLanguage(val as 'vietnamese' | 'english')}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-50">
+                    <SelectItem value="vietnamese">Tiếng Việt</SelectItem>
+                    <SelectItem value="english">English</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            
+            {selectedJob && !generatingQuestions && (
+              <div className="flex gap-2 mt-3">
+                <Badge variant="outline" className="text-xs">
+                  {selectedJob.department}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {selectedJob.level}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {selectedJob.job_type || 'Full-time'}
+                </Badge>
+              </div>
+            )}
           </DialogHeader>
           
-          <div className="space-y-4">
+          <div className="space-y-4 mt-4">
             {generatingQuestions ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-gray-600">Đang tạo câu hỏi với AI...</p>
-              </div>
-            ) : (
-              <>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <pre className="whitespace-pre-wrap text-sm">{aiQuestions}</pre>
+              // Loading State
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="relative">
+                  <div className="w-16 h-16 border-4 border-purple-200 rounded-full" />
+                  <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0" />
                 </div>
-                <div className="flex gap-3">
+                <p className="text-gray-600 mt-6 font-medium">Đang tạo câu hỏi với AI...</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  AI đang phân tích JD và tạo câu hỏi phù hợp
+                </p>
+                <div className="flex gap-2 mt-4">
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            ) : aiQuestions ? (
+              // Questions Display State
+              <>
+                {/* Info banner */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-purple-900">
+                        Câu hỏi được tạo tự động bởi AI
+                      </p>
+                      <p className="text-xs text-purple-700 mt-1">
+                        Vui lòng xem xét và điều chỉnh cho phù hợp với nhu cầu thực tế của công ty. 
+                        Các câu hỏi này chỉ mang tính tham khảo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Questions display with markdown formatting */}
+                <div className="border rounded-lg bg-white overflow-hidden">
+                  <div className="p-6 max-h-[500px] overflow-y-auto">
+                    <div className="prose prose-sm max-w-none">
+                      {aiQuestions.split('\n').map((line, index) => {
+                        // Heading 1
+                        if (line.startsWith('# ')) {
+                          return (
+                            <h1 key={index} className="text-2xl font-bold mt-6 mb-4 text-gray-900 first:mt-0">
+                              {line.replace('# ', '')}
+                            </h1>
+                          );
+                        }
+                        // Heading 2
+                        if (line.startsWith('## ')) {
+                          return (
+                            <h2 key={index} className="text-lg font-bold mt-6 mb-3 text-gray-900 flex items-center gap-2">
+                              {line.replace('## ', '')}
+                            </h2>
+                          );
+                        }
+                        // Heading 3
+                        if (line.startsWith('### ')) {
+                          return (
+                            <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-gray-800">
+                              {line.replace('### ', '')}
+                            </h3>
+                          );
+                        }
+                        // List items
+                        if (line.trim().startsWith('- ')) {
+                          return (
+                            <li key={index} className="ml-6 mb-2 text-gray-700">
+                              {line.trim().replace('- ', '')}
+                            </li>
+                          );
+                        }
+                        // Numbered list
+                        if (/^\d+\.\s/.test(line.trim())) {
+                          return (
+                            <li key={index} className="ml-6 mb-2 text-gray-700 list-decimal">
+                              {line.trim().replace(/^\d+\.\s/, '')}
+                            </li>
+                          );
+                        }
+                        // Empty line
+                        if (line.trim() === '') {
+                          return <div key={index} className="h-2" />;
+                        }
+                        // Regular paragraph
+                        return (
+                          <p key={index} className="mb-2 text-gray-700">
+                            {line}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-4 border-t">
                   <Button
                     variant="outline"
                     className="flex-1"
@@ -1347,12 +1594,33 @@ export function JobsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setIsAIQuestionsDialogOpen(false)}
+                    onClick={() => {
+                      setAiQuestions('');
+                      if (selectedJob) {
+                        handleGenerateAIQuestions(selectedJob);
+                      }
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Tạo lại
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsAIQuestionsDialogOpen(false);
+                      setAiQuestions('');
+                    }}
                   >
                     Đóng
                   </Button>
                 </div>
               </>
+            ) : (
+              // No questions state
+              <div className="text-center py-12 text-gray-500">
+                <Sparkles className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <p className="text-sm">Không có câu hỏi nào được tạo</p>
+              </div>
             )}
           </div>
         </DialogContent>
