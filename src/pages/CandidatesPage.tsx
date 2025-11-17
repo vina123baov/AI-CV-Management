@@ -1678,24 +1678,24 @@ export function CandidatesPage() {
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg z-50">
-                        <DropdownMenuItem onClick={() => handleViewCandidate(candidate)} className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer">
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleViewCandidate(candidate)} className="flex items-center gap-2">
                           <Eye className="h-4 w-4 text-blue-600" />
                           <span>Xem thông tin</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleEditCandidate(candidate)} className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer">
+                        <DropdownMenuItem onClick={() => handleEditCandidate(candidate)} className="flex items-center gap-2">
                           <Edit className="h-4 w-4 text-green-600" />
                           <span>Chỉnh sửa</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleViewCV(candidate)} className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer">
+                        <DropdownMenuItem onClick={() => handleViewCV(candidate)} className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-purple-600" />
                           <span>Xem CV</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleAnalyzeCV(candidate)} className="flex items-center gap-2 hover:bg-gray-100 cursor-pointer">
+                        <DropdownMenuItem onClick={() => handleAnalyzeCV(candidate)} className="flex items-center gap-2">
                           <Brain className="h-4 w-4 text-orange-600" />
                           <span>Phân tích CV</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDeleteCandidate(candidate)} className="flex items-center gap-2 text-red-600 hover:bg-red-50 cursor-pointer">
+                        <DropdownMenuItem onClick={() => handleDeleteCandidate(candidate)} className="flex items-center gap-2 text-red-600">
                           <Trash2 className="h-4 w-4" />
                           <span>Xóa ứng viên</span>
                         </DropdownMenuItem>
