@@ -1,7 +1,6 @@
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X, Server } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { CVParserService } from '@/services/cvParserService';
-import type { ParsedCV } from '@/utils/advancedCVParser';
+
 
 interface CVUploadZoneProps {
   onFileSelect?: (file: File, parsed: ParsedCV) => void;
