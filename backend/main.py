@@ -1,12 +1,4 @@
-"""
-Backend API for CV Management System
-Uses OpenRouter AI for both CV parsing and job matching
-✅ UPDATED: Enhanced AI prompt for comprehensive extraction
-- Experience: Extracted from ALL sources (summary, projects, achievements)
-- Skills: Aggregated from entire CV, deduplicated
-- Education: Includes degrees, certifications, and qualifications from all sections
-✅ NEW: AI Interview Questions Generation endpoint
-"""
+
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
