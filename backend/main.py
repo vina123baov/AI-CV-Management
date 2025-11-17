@@ -459,6 +459,13 @@ Return JSON:
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Starting server on port {port}...")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    
+    print(f"\n{'='*60}")
+    print(f"🚀 Starting AI CV Management Backend")
+    print(f"🌐 Host: 0.0.0.0:{port}")
+    print(f"{'='*60}\n")
+    
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
