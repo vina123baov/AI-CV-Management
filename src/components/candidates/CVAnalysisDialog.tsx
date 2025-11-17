@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ParsedCV } from "@/utils/advancedCVParser";
+// ✅ FIX: Import từ cvParser thay vì advancedCVParser
+import type { ParsedCV } from "@/utils/cvParser";
 
 // Simple Progress component
 const Progress = ({ value, className }: { value: number; className?: string }) => (
@@ -150,7 +151,7 @@ export function CVAnalysisDialog({ candidate, isLoading, onClose }: CVAnalysisDi
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-1 text-sm text-yellow-700">
-                    {parsedData.warnings.map((warning, idx) => (
+                    {parsedData.warnings.map((warning: string, idx: number) => (
                       <li key={idx} className="flex items-start gap-2">
                         <span className="mt-0.5">⚠️</span>
                         <span>{warning}</span>
@@ -172,10 +173,11 @@ export function CVAnalysisDialog({ candidate, isLoading, onClose }: CVAnalysisDi
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    {parsedData.name && (
+                    {/* ✅ FIX: Đổi parsedData.name thành parsedData.fullName */}
+                    {parsedData.fullName && (
                       <div>
                         <span className="font-medium text-gray-600">👤 Họ tên:</span>
-                        <p className="text-gray-900 mt-1">{parsedData.name}</p>
+                        <p className="text-gray-900 mt-1">{parsedData.fullName}</p>
                       </div>
                     )}
                     {parsedData.email && (
@@ -234,7 +236,7 @@ export function CVAnalysisDialog({ candidate, isLoading, onClose }: CVAnalysisDi
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
-                      {parsedData.skills.map((skill, idx) => (
+                      {parsedData.skills.map((skill: string, idx: number) => (
                         <Badge 
                           key={idx} 
                           variant="outline" 
@@ -282,7 +284,7 @@ export function CVAnalysisDialog({ candidate, isLoading, onClose }: CVAnalysisDi
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {parsedData.languages.map((lang, idx) => (
+                    {parsedData.languages.map((lang: string, idx: number) => (
                       <Badge key={idx} variant="secondary">{lang}</Badge>
                     ))}
                   </div>
@@ -298,7 +300,7 @@ export function CVAnalysisDialog({ candidate, isLoading, onClose }: CVAnalysisDi
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2 text-sm">
-                    {parsedData.certifications.map((cert, idx) => (
+                    {parsedData.certifications.map((cert: string, idx: number) => (
                       <li key={idx} className="flex items-start gap-2">
                         <span className="text-green-600 mt-0.5">✓</span>
                         <span>{cert}</span>
