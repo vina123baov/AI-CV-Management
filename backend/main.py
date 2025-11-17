@@ -5,6 +5,7 @@ Uses OpenRouter AI for both CV parsing and job matching
 - Experience: Extracted from ALL sources (summary, projects, achievements)
 - Skills: Aggregated from entire CV, deduplicated
 - Education: Includes degrees, certifications, and qualifications from all sections
+✅ NEW: AI Interview Questions Generation endpoint
 """
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -70,6 +71,27 @@ class MatchCVJobsRequest(BaseModel):
     cv_data: CVData
     jobs: List[JobData]
     primary_job_id: Optional[str] = None
+
+class GenerateJobDescriptionRequest(BaseModel):
+    title: str
+    level: str
+    department: str
+    work_location: Optional[str] = None
+    job_type: Optional[str] = None
+    language: str = "vietnamese"
+    keywords: Optional[str] = None
+
+class GenerateInterviewQuestionsRequest(BaseModel):
+    job_id: str
+    job_title: str
+    department: str
+    level: str
+    job_type: Optional[str] = None
+    work_location: Optional[str] = None
+    description: Optional[str] = None
+    requirements: Optional[str] = None
+    mandatory_requirements: Optional[str] = None
+    language: str = "vietnamese"
 
 # ==================== HELPERS ====================
 
@@ -146,8 +168,8 @@ async def parse_cv(file: UploadFile = File(None), cv_file: UploadFile = File(Non
         if not upload_file:
             raise HTTPException(status_code=422, detail="No file provided")
         
-        print(f"\n�� ===== CV PARSING START (ENHANCED) =====")
-        print(f"�� File: {upload_file.filename}")
+        print(f"\n📄 ===== CV PARSING START (ENHANCED) =====")
+        print(f"📁 File: {upload_file.filename}")
         
         if not upload_file.filename.endswith(('.pdf', '.doc', '.docx')):
             raise HTTPException(status_code=400, detail="Unsupported file format")
@@ -156,12 +178,12 @@ async def parse_cv(file: UploadFile = File(None), cv_file: UploadFile = File(Non
         if not file_content:
             raise HTTPException(status_code=400, detail="File is empty")
         
-        print(f"�� File size: {len(file_content)/1024:.2f} KB")
+        print(f"📦 File size: {len(file_content)/1024:.2f} KB")
         
         cv_text = ""
         
         if upload_file.filename.endswith('.pdf'):
-            print("�� Parsing PDF...")
+            print("📖 Parsing PDF...")
             pdf_file = io.BytesIO(file_content)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             
@@ -172,7 +194,7 @@ async def parse_cv(file: UploadFile = File(None), cv_file: UploadFile = File(Non
                     print(f"  ✓ Page {page_num + 1}: {len(text)} chars")
         
         elif upload_file.filename.endswith(('.doc', '.docx')):
-            print("�� Parsing DOCX...")
+            print("📖 Parsing DOCX...")
             doc_file = io.BytesIO(file_content)
             doc = Document(doc_file)
             cv_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
@@ -184,7 +206,7 @@ async def parse_cv(file: UploadFile = File(None), cv_file: UploadFile = File(Non
         
         ai_input_text = cv_text[:4000] if len(cv_text) > 4000 else cv_text
         
-        print(f"�� Calling OpenRouter AI with ENHANCED prompt...")
+        print(f"🤖 Calling OpenRouter AI with ENHANCED prompt...")
         
         # ✅ ENHANCED PROMPT - Comprehensive extraction from entire CV
         messages = [
@@ -220,9 +242,9 @@ COMPREHENSIVE EXTRACTION GUIDELINES:
    - Example: "JOHN MICHAEL DOE" or "Nguyễn Văn An"
 
 2. CONTACT INFORMATION:
-   �� EMAIL: xxx@domain.com format
-   �� PHONE: Various formats (+84, 0, international codes)
-   �� ADDRESS: Full or partial address, city, country
+   📧 EMAIL: xxx@domain.com format
+   📱 PHONE: Various formats (+84, 0, international codes)
+   📍 ADDRESS: Full or partial address, city, country
 
 3. EDUCATION & QUALIFICATIONS - ⚠️ COMPREHENSIVE EXTRACTION:
    
@@ -409,7 +431,7 @@ CRITICAL REMINDERS:
         parsed_data['fullText'] = cv_text
         
         # ✅ Log extraction statistics
-        print(f"�� Extraction Statistics:")
+        print(f"📊 Extraction Statistics:")
         print(f"  ├─ Name: {parsed_data.get('full_name', 'N/A')}")
         print(f"  ├─ Email: {parsed_data.get('email', 'N/A')}")
         print(f"  ├─ Skills extracted: {len(parsed_data.get('skills', []))} skills")
@@ -443,92 +465,136 @@ CRITICAL REMINDERS:
 @app.post("/api/match-cv-jobs")
 async def match_cv_jobs(request: MatchCVJobsRequest):
     """
-    Match CV with multiple job positions using AI analysis
-    ✅ UNCHANGED - Only parse-cv endpoint was modified
+    ✅ OPTIMIZED VERSION: Match CV with multiple job positions using AI analysis
+    🔧 Fixed: Mandatory requirements strict matching logic
     """
     try:
-        print(f"\n�� ===== CV-JOB MATCHING START =====")
-        print(f"�� CV: {request.cv_data.full_name}")
-        print(f"�� Jobs to match: {len(request.jobs)}")
+        print(f"\n🎯 ===== CV-JOB MATCHING START =====")
+        print(f"👤 CV: {request.cv_data.full_name}")
+        print(f"📋 Jobs to match: {len(request.jobs)}")
         if request.primary_job_id:
             print(f"⭐ Primary job: {request.primary_job_id}")
         
+        # ==================== BUILD CV CONTEXT ====================
         cv_context = f"""
-CANDIDATE INFORMATION:
+📋 ỨNG VIÊN PROFILE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Name: {request.cv_data.full_name}
+
+👤 THÔNG TIN CƠ BẢN:
+Họ tên: {request.cv_data.full_name}
 Email: {request.cv_data.email}
-Phone: {request.cv_data.phone_number or 'N/A'}
-Address: {request.cv_data.address or 'N/A'}
+Số điện thoại: {request.cv_data.phone_number or 'Không có'}
+Địa chỉ: {request.cv_data.address or 'Không có'}
 
-EDUCATION:
-{request.cv_data.education or 'Not specified'}
+🎓 HỌC VẤN:
+Trường: {request.cv_data.university or 'Không có thông tin'}
+Bằng cấp: {request.cv_data.education or 'Không có thông tin'}
 
-UNIVERSITY:
-{request.cv_data.university or 'Not specified'}
+💼 KINH NGHIỆM:
+{request.cv_data.experience or 'Không có thông tin'}
 
-WORK EXPERIENCE:
-{request.cv_data.experience or 'Not specified'}
+📄 CV FULL TEXT (3500 ký tự đầu - dùng để tìm bằng chứng bổ sung):
+{request.cv_text[:3500]}
 
-FULL CV TEXT (for additional context):
-{request.cv_text[:2000]}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
         
+        # ==================== BUILD JOBS CONTEXT ====================
         jobs_text = ""
         for idx, job in enumerate(request.jobs, 1):
-            is_primary = "⭐ PRIMARY JOB" if job.id == request.primary_job_id else ""
+            is_primary = "⭐ PRIMARY (Ứng viên đã apply)" if job.id == request.primary_job_id else ""
+            
             jobs_text += f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JOB {idx}: {job.title} {is_primary}
+JOB #{idx}: {job.title} {is_primary}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 THÔNG TIN CƠ BẢN:
 ID: {job.id}
-Title: {job.title}
-Level: {job.level or 'N/A'}
-Department: {job.department or 'N/A'}
-Job Type: {job.job_type or 'N/A'}
-Work Location: {job.work_location or 'N/A'}
-Location: {job.location or 'N/A'}
+Tên vị trí: {job.title}
+Cấp bậc: {job.level or 'Không xác định'}
+Phòng ban: {job.department or 'Không xác định'}
+Loại hình: {job.job_type or 'Không xác định'}
+Hình thức: {job.work_location or 'Không xác định'}
+Địa điểm: {job.location or 'Không xác định'}
 
-DESCRIPTION:
-{job.description or 'N/A'}
+📝 MÔ TẢ CÔNG VIỆC:
+{job.description or 'Không có mô tả'}
 
-REQUIREMENTS:
-{job.requirements or 'N/A'}
+✅ YÊU CẦU:
+{job.requirements or 'Không có yêu cầu cụ thể'}
 
-MANDATORY REQUIREMENTS (If candidate does NOT meet these, apply -50 penalty):
-{job.mandatory_requirements or 'None'}
+⚠️⚠️⚠️ YÊU CẦU BẮT BUỘC (MANDATORY):
+{job.mandatory_requirements or 'KHÔNG CÓ yêu cầu bắt buộc'}
+⚠️⚠️⚠️
 
-BENEFITS:
-{job.benefits or 'N/A'}
+💰 QUYỀN LỢI:
+{job.benefits or 'Không có thông tin'}
 
 """
         
-        messages = [
-            {
-                "role": "system",
-                "content": """You are an expert recruitment AI specializing in candidate-job matching.
+        # ==================== SYSTEM PROMPT (FIXED VERSION) ====================
+        system_prompt = """Bạn là chuyên gia HR và AI Matching với 15 năm kinh nghiệm tuyển dụng IT.
 
-Analyze CV against multiple job positions with precision and fairness.
+Nhiệm vụ: Phân tích CV và chấm điểm độ phù hợp với TỪNG job trong danh sách.
 
-SCORING SYSTEM (BASE 100 or BASE 50 if mandatory requirements not met):
+═══════════════════════════════════════════════════════════════
+📋 QUY TRÌNH CHẤM ĐIỂM CHUẨN (CHO MỖI JOB)
+═══════════════════════════════════════════════════════════════
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BƯỚC 1: KIỂM TRA YÊU CẦU BẮT BUỘC (MANDATORY)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 BƯỚC 1: KIỂM TRA YÊU CẦU BẮT BUỘC MANDATORY (STRICT MATCHING - KHÔNG SUY LUẬN)
 
-NẾU có "MANDATORY REQUIREMENTS":
-1. Đọc KỸ từng yêu cầu bắt buộc
-2. Tìm bằng chứng trong CV:
-   - university field
-   - education field  
-   - experience field
-   - fullText field
-3. NẾU ứng viên ĐÁP ỨNG → Tiếp tục chấm trên BASE 100
-4. NẾU ứng viên KHÔNG ĐÁP ỨNG → Áp dụng PENALTY -50 điểm NGAY
+Nếu job có "YÊU CẦU BẮT BUỘC/"MANDATORY REQUIREMENTS"" (mandatory_requirements):
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BƯỚC 2A: CHẤM ĐIỂM TRÊN BASE 100 (Nếu ĐÁP ỨNG bắt buộc)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1️ Đọc KỸ từng yêu cầu bắt buộc VÀ PHÂN TÍCH từ khóa bắt buộc:
+   VD: "Tốt nghiệp Cử Nhân Đại Học"
+   → Keywords cần tìm: ["cử nhân", "đại học"]
+   
+   VD: "3+ năm kinh nghiệm Python"
+   → Keywords cần tìm: ["python", "3 năm" hoặc "3+"]
+
+2️ TÌM BẰNG CHỨNG trong CV (THEO THỨ TỰ ƯU TIÊN):
+   
+   🎯 Priority 1: Field "Bằng cấp" (education)
+   - Đây là field QUAN TRỌNG NHẤT cho yêu cầu học vấn
+   - VD: "Cử nhân Công nghệ Thông tin"
+   - VD: "Kỹ sư Điện tử"
+   
+   🎯 Priority 2: Field "Trường" (university)
+   - Chỉ chứa TÊN TRƯỜNG, thường KHÔNG chứa bằng cấp
+   - VD: "Đại học Bách Khoa Hà Nội"
+   - VD: "Học viện Công nghệ Bưu chính Viễn thông"
+   
+   🎯 Priority 3: Field "Kinh nghiệm" (experience)
+   - Dùng cho yêu cầu về số năm kinh nghiệm và skills
+   
+   🎯 Priority 4: Full CV Text (backup - tìm trong đoạn HỌC VẤN/EDUCATION)
+   - Dùng khi các field trên null hoặc thiếu thông tin
+
+3️ QUY TẮC MATCHING:
+   
+   ✅ PASS mandatory nếu:
+   - Tìm thấy TẤT CẢ keywords trong CV
+   - Có BẰNG CHỨNG CỤ THỂ (text chính xác)
+   
+   ❌ FAIL mandatory nếu:
+   - THIẾU BẤT KỲ keyword nào
+   
+   ⚠️ KHÔNG được suy luận:
+     ❌ "Có Đại học" ≠ "Có Cử nhân"
+     ❌ "Có trường top" ≠ "Có bằng"
+     ❌ "Có 1 năm exp" ≠ "Có 3 năm exp"
+     ❌ "Có Node.js" ≠ "Có Python"
+     
+KẾT LUẬN:
+- NẾU ứng viên ĐÁP ỨNG → Tiếp tục chấm trên BASE 100
+- NẾU ứng viên KHÔNG ĐÁP ỨNG → Áp dụng PENALTY -50 điểm NGAY
+
+═══════════════════════════════════════════════════════════════
+
+🔵 BƯỚC 2A: CHẤM ĐIỂM (NẾU PASS MANDATORY/đáp ứng trường bắt buộc hoặc KHÔNG CÓ MANDATORY)
+
+Base: 100 điểm
 
 Phân bổ điểm (Tổng = 100):
 - Kinh nghiệm phù hợp: 0-30 điểm
@@ -538,18 +604,22 @@ Phân bổ điểm (Tổng = 100):
 - Địa điểm phù hợp: 0-10 điểm
 - Kỹ năng mềm: 0-5 điểm
 
-Điểm cuối = Tổng (0-100)
-Điểm yếu: Các điểm yếu thông thường (KHÔNG liên quan mandatory)
+TỔNG: X/100
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BƯỚC 2B: ÁP DỤNG PENALTY VÀ CHẤM TRÊN BASE 50 (Nếu KHÔNG đáp ứng bắt buộc)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Strengths: ["Điểm mạnh 1", "Điểm mạnh 2", "Điểm mạnh 3"]
+Weaknesses: ["Điểm yếu 1", "Điểm yếu 2"], Các điểm yếu thông thường (KHÔNG liên quan mandatory)
+Recommendation: "Đánh giá chi tiết 80-120 từ"
 
-Áp dụng penalty NGAY LẬP TỨC:
-- Base điểm giảm: 100 → 50
-- Điểm tối đa có thể: 50
+═══════════════════════════════════════════════════════════════
 
-SAU ĐÓ chấm trên BASE MỚI (thang 50):
+🔴 BƯỚC 2B: CHẤM ĐIỂM (NẾU FAIL MANDATORY / không đáp ứng trường bắt buộc)
+
+🚨 ÁP DỤNG PENALTY ngay lập tức: -50 ĐIỂM
+ Base điểm giảm: 100 → 50
+ Điểm tối đa có thể: 50 (Base mới)
+
+SAU ĐÓ Chấm trên BASE 50 (mỗi component giảm 50%):
+
 - Kinh nghiệm phù hợp: 0-15 điểm (giảm 50%)
 - Kỹ năng kỹ thuật: 0-12 điểm (giảm 50%)
 - Học vấn: 0-8 điểm (giảm 50%)
@@ -557,20 +627,61 @@ SAU ĐÓ chấm trên BASE MỚI (thang 50):
 - Địa điểm: 0-5 điểm (giảm 50%)
 - Kỹ năng mềm: 0-2 điểm (giảm 50%)
 
-Điểm cuối = Tổng (0-50 tối đa)
-Điểm yếu: PHẢI có "Ứng viên không đáp ứng yêu cầu bắt buộc: [yêu cầu cụ thể]" + các điểm yếu khác
+TỔNG: Y/50 (tối đa 50)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ LƯU Ý QUAN TRỌNG:
+- Điểm yếu: PHẢI có "Ứng viên không đáp ứng yêu cầu bắt buộc: [yêu cầu cụ thể]" + các điểm yếu khác"
+- Recommendation: "Ứng viên có [điểm mạnh] nhưng KHÔNG ĐỦ ĐIỀU KIỆN do thiếu [requirement cụ thể]"
+
 QUAN TRỌNG: Với JOB ⭐ PRIMARY (job ứng viên đã apply):
 - Đánh giá CHI TIẾT HỖN hơn
 - Đây là job ứng viên QUAN TÂM - phải đánh giá kỹ lưỡng
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Trả về ONLY valid JSON."""
-            },
-            {
-                "role": "user",
-                "content": f"""Phân tích CV và matching với các công việc theo QUY TRÌNH CHÍNH XÁC:
+
+═══════════════════════════════════════════════════════════════
+🎯 OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════
+
+Trả về JSON với format:
+
+{
+  "overall_score": <điểm của best_match>,
+  "best_match": {
+    "job_id": "<job_id>",
+    "job_title": "<job_title>",
+    "match_score": <0-100 hoặc 0-50 nếu fail mandatory>,
+    "strengths": ["...", "...", "..."],
+    "weaknesses": ["...", "..."],
+    "recommendation": "..."
+  },
+  "all_matches": [
+    {
+      "job_id": "<job_id>",
+      "job_title": "<job_title>",
+      "match_score": <0-100 hoặc 0-50>,
+      "strengths": ["...", "...", "..."],
+      "weaknesses": ["...", "..."],
+      "recommendation": "..."
+    },
+    ...
+  ]
+}
+
+⚠️ CRITICAL RULES:
+1. Nếu FAIL mandatory → match_score PHẢI ≤ 50
+2. Weaknesses của job fail mandatory PHẢI có: "❌ Không đáp ứng yêu cầu bắt buộc: [requirement]"
+3. KHÔNG được suy luận: "Có Đại học" ≠ "Có Cử nhân"
+4. Phải tìm CHÍNH XÁC từ khóa trong CV
+5. all_matches phải được sắp xếp theo match_score giảm dần
+6. best_match = job có match_score CAO NHẤT
+7. overall_score = best_match.match_score
+
+QUAN TRỌNG: 
+- Job có ⭐ PRIMARY → Đánh giá CHI TIẾT và KỸ LƯỠNG hơn
+- Luôn trả về JSON hợp lệ, không thêm text giải thích bên ngoài"""
+
+        # ==================== USER PROMPT ====================
+        user_prompt = f"""Phân tích CV và matching với các công việc theo QUY TRÌNH CHÍNH XÁC:
 
 {cv_context}
 
@@ -581,6 +692,24 @@ CÁC CÔNG VIỆC CẦN MATCHING:
 {jobs_text}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Hãy phân tích và chấm điểm cho TẤT CẢ {len(request.jobs)} jobs trên theo đúng quy trình:
+
+1. Với MỖI JOB: Kiểm tra mandatory TRƯỚC
+2. Nếu PASS hoặc không có mandatory → Base 100
+3. Nếu FAIL mandatory → Penalty -50 → Base 50
+4. Chấm điểm trên base tương ứng
+5. Sắp xếp all_matches theo điểm giảm dần
+6. best_match = job có điểm cao nhất
+
+LƯU Ý:
+- ĐỌC KỸ: Bằng cấp, Trường, Kinh nghiệm, Full text
+- KHÔNG SUY LUẬN: "Có Đại học" ≠ "Có Cử nhân"
+- STRICT MATCH: Phải tìm thấy CHÍNH XÁC từ khóa
+- Nếu mandatory là một kỹ năng bắt buộc phải có thì phải tìm được script trùng khớp trong CV
+- Nếu mandatory là số năm kinh nghiệm thì phải tìm được số năm đúng hoặc lớn hơn trong CV hoặc công các năm dựa theo các công việc đã làm trong mục kinh nghiệm
+- Fail mandatory → PHẢI có "❌ Không đáp ứng..." trong weaknesses
+- Job PRIMARY → Đánh giá kỹ hơn
 
 CHO MỖI CÔNG VIỆC, ÁP DỤNG QUY TRÌNH:
 
@@ -601,60 +730,54 @@ Ví dụ 2: Job yêu cầu "Tốt nghiệp Đại học" + Ứng viên universit
 → Kết quả: 34/50
 → Điểm yếu: ["Ứng viên không đáp ứng yêu cầu bắt buộc: Tốt nghiệp Đại học", "Thiếu kinh nghiệm cloud"]
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ĐẶC BIỆT CHÚ Ý VỀ BEST_MATCH:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Trả về JSON:
-{{
-  "overall_score": 85,
-  "best_match": {{
-    "job_id": "uuid",
-    "job_title": "Tên công việc",
-    "match_score": 88,
-    "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
-    "weaknesses": ["điểm yếu 1", "điểm yếu 2"],
-    "recommendation": "Nhận xét chi tiết 80-120 từ"
-  }},
-  "all_matches": [
-    {{
-      "job_id": "uuid-1",
-      "job_title": "Job 1",
-      "match_score": 88,
-      "strengths": ["s1", "s2", "s3"],
-      "weaknesses": ["w1", "w2"],
-      "recommendation": "..."
-    }}
-  ]
-}}
+1. best_match PHẢI là job có match_score CAO NHẤT trong all_matches
+2. overall_score PHẢI = best_match.match_score
+3. all_matches PHẢI được sắp xếp theo match_score giảm dần
 
-LƯU Ý QUAN TRỌNG:
-- Đọc KỸ TẤT CẢ các trường: university, education, experience, fullText
-- Kiểm tra yêu cầu bắt buộc TRƯỚC KHI chấm điểm
-- Áp dụng penalty -50 NGAY nếu không đáp ứng
-- Chấm điểm trên base 50 (KHÔNG phải base 100) sau khi penalty
-- Thêm "Ứng viên không đáp ứng yêu cầu bắt buộc" vào điểm yếu
-- Tìm kiếm kỹ lưỡng bằng chứng trong CV
-- Sắp xếp all_matches theo match_score giảm dần
-- PHẢI trả về đầy đủ overall_score, best_match, all_matches
-- best_match là job có điểm match_score CAO NHẤT
-- Nếu có PRIMARY job, ưu tiên đánh giá kỹ hơn"""
-            }
+4. Khi viết recommendation cho best_match:
+   - NẾU best_match.job_id == primary_job_id (job ứng viên đã apply):
+     → Viết: "Ứng viên đã apply đúng vị trí phù hợp với hồ sơ. [Điểm mạnh chính]..."
+   
+   - NẾU best_match.job_id != primary_job_id:
+     → Viết: "Ứng viên phù hợp hơn với vị trí [best_match_title] so với vị trí đã apply [primary_job_title]. Lý do: [so sánh cụ thể]..."
+
+5. Đảm bảo recommendation dài 100-150 từ, chi tiết và có bằng chứng cụ thể
+
+Trả về ONLY valid JSON theo format đã cho."""
+
+        # ==================== BUILD MESSAGES ====================
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ]
         
-        print(f"�� Calling OpenRouter AI...")
+        # ==================== CALL OPENROUTER API ====================
+        print(f"🤖 Calling OpenRouter AI (gpt-4o-mini, temp=0.2)...")
         
-        result = call_openrouter_api(messages=messages, model="openai/gpt-4o-mini", temperature=0.3, max_tokens=4000)
+        result = call_openrouter_api(
+            messages=messages,
+            model="openai/gpt-4o-mini",
+            temperature=0.2,  # ✅ Giảm xuống 0.2 cho consistent hơn
+            max_tokens=4000
+        )
         
         print(f"✅ OpenRouter responded")
         
+        # ==================== EXTRACT & VALIDATE RESPONSE ====================
         content = result['choices'][0]['message']['content']
-        print(f"�� Raw AI response: {content[:200]}...")
+        print(f"📄 Raw AI response length: {len(content)} chars")
         
         analysis_data = extract_json_from_response(content)
         
-        # Validate and ensure required fields exist
+        # Validate response structure
         if not isinstance(analysis_data, dict):
             raise ValueError("AI response is not a valid dictionary")
         
+        # ✅ Ensure best_match exists
         if not analysis_data.get('best_match'):
             print(f"⚠️  Missing best_match, creating fallback")
             analysis_data['best_match'] = {
@@ -666,51 +789,71 @@ LƯU Ý QUAN TRỌNG:
                 "recommendation": "Vui lòng thử lại sau."
             }
         
+        # ✅ Ensure all_matches exists
         if not analysis_data.get('all_matches'):
             print(f"⚠️  Missing all_matches, creating from best_match")
             analysis_data['all_matches'] = [analysis_data['best_match']]
         
-        if 'overall_score' not in analysis_data:
-            analysis_data['overall_score'] = analysis_data.get('best_match', {}).get('match_score', 0)
+        # ✅ Sort all_matches by score descending
+        analysis_data['all_matches'] = sorted(
+            analysis_data['all_matches'],
+            key=lambda x: x.get('match_score', 0),
+            reverse=True
+        )
         
+        # ✅ Set best_match as highest score
+        if analysis_data['all_matches']:
+            analysis_data['best_match'] = analysis_data['all_matches'][0]
+        
+        # ✅ Set overall_score
+        if 'overall_score' not in analysis_data:
+            analysis_data['overall_score'] = analysis_data['best_match'].get('match_score', 0)
+        
+        # ==================== LOG RESULTS ====================
         print(f"✅ Overall score: {analysis_data.get('overall_score', 'N/A')}")
-        print(f"�� Best match: {analysis_data.get('best_match', {}).get('job_title', 'N/A')}")
-        print(f"�� All matches: {len(analysis_data.get('all_matches', []))}")
+        print(f"🏆 Best match: {analysis_data['best_match'].get('job_title', 'N/A')} ({analysis_data['best_match'].get('match_score', 0)})")
+        print(f"📊 All matches: {len(analysis_data.get('all_matches', []))}")
+        
+        # ✅ Log scores for all jobs
+        for idx, match in enumerate(analysis_data['all_matches'], 1):
+            score = match.get('match_score', 0)
+            has_fail = any('❌' in w for w in match.get('weaknesses', []))
+            print(f"  {idx}. {match.get('job_title', 'N/A')}: {score} {'(FAIL MANDATORY)' if has_fail and score <= 50 else ''}")
+        
         print(f"===== CV-JOB MATCHING END =====\n")
         
+        # ==================== RETURN RESPONSE ====================
         return {
             "success": True,
             "data": analysis_data,
             "message": "CV-Job matching completed",
-            "metadata": {"model": "gpt-4o-mini", "jobs_analyzed": len(request.jobs)}
+            "metadata": {
+                "model": "gpt-4o-mini",
+                "temperature": 0.2,
+                "jobs_analyzed": len(request.jobs),
+                "primary_job_id": request.primary_job_id
+            }
         }
     
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"❌ Error in match_cv_jobs: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error matching: {str(e)}")
-
-class GenerateJobDescriptionRequest(BaseModel):
-    title: str
-    level: str
-    department: str
-    work_location: Optional[str] = None
-    job_type: Optional[str] = None
-    language: str = "vietnamese"
-    keywords: Optional[str] = None
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error matching CV with jobs: {str(e)}"
+        )
 
 @app.post("/api/generate-job-description")
 async def generate_job_description(request: GenerateJobDescriptionRequest):
     """
     Generate job description using AI
-    ✅ UNCHANGED - Only parse-cv endpoint was modified
     """
     try:
-        print(f"\n�� ===== GENERATING JOB DESCRIPTION =====")
-        print(f"�� Title: {request.title}")
+        print(f"\n📝 ===== GENERATING JOB DESCRIPTION =====")
+        print(f"💼 Title: {request.title}")
         
         job_context = f"""Job Position: {request.title}
 Department: {request.department}
@@ -760,6 +903,223 @@ Return JSON:
     except Exception as e:
         print(f"❌ Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating job description: {str(e)}")
+
+@app.post("/api/generate-interview-questions")
+async def generate_interview_questions(request: GenerateInterviewQuestionsRequest):
+    """
+    ✅ NEW ENDPOINT - Generate interview questions based on job description using AI
+    
+    This endpoint analyzes the job requirements and generates comprehensive interview questions
+    categorized by:
+    - Technical Knowledge
+    - Soft Skills
+    - Situational Questions
+    - Career Goals & Motivation
+    
+    Returns markdown-formatted questions ready for use in interviews.
+    """
+    try:
+        print(f"\n💬 ===== GENERATING INTERVIEW QUESTIONS =====")
+        print(f"📋 Job: {request.job_title} ({request.job_id})")
+        print(f"🏢 Department: {request.department}")
+        print(f"📊 Level: {request.level}")
+        
+        # Build comprehensive job context
+        job_context = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+JOB INFORMATION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Position: {request.job_title}
+Department: {request.department}
+Level: {request.level}
+Job Type: {request.job_type or 'Full-time'}
+Work Location: {request.work_location or 'Not specified'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+JOB DESCRIPTION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{request.description or 'Not specified'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REQUIREMENTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{request.requirements or 'Not specified'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MANDATORY REQUIREMENTS (MUST VERIFY):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{request.mandatory_requirements or 'None'}
+"""
+        
+        # Determine language instruction
+        if request.language == "vietnamese":
+            lang_instruction = "Write ALL interview questions in Vietnamese language with professional tone."
+            category_names = {
+                "technical": "## 📚 Phần 1: Kiến thức chuyên môn (Technical Knowledge)",
+                "soft": "## 🤝 Phần 2: Kỹ năng mềm (Soft Skills)",
+                "situational": "## 💡 Phần 3: Tình huống thực tế (Situational Questions)",
+                "motivation": "## 🎯 Phần 4: Định hướng & Động lực (Career Goals & Motivation)"
+            }
+        else:
+            lang_instruction = "Write ALL interview questions in English language with professional tone."
+            category_names = {
+                "technical": "## 📚 Part 1: Technical Knowledge",
+                "soft": "## 🤝 Part 2: Soft Skills",
+                "situational": "## 💡 Part 3: Situational Questions",
+                "motivation": "## 🎯 Part 4: Career Goals & Motivation"
+            }
+        
+        messages = [
+            {
+                "role": "system", 
+                "content": f"""You are an expert HR interviewer and recruitment specialist with deep knowledge of:
+- Technical competency assessment
+- Behavioral interviewing techniques
+- STAR method questioning
+- Cultural fit evaluation
+- Industry-specific requirements
+
+Your goal is to create comprehensive, insightful interview questions that help recruiters:
+1. Assess candidate's technical skills and knowledge
+2. Evaluate problem-solving abilities and critical thinking
+3. Understand work style and cultural fit
+4. Gauge motivation and career alignment
+
+{lang_instruction}
+
+IMPORTANT GUIDELINES:
+- Questions should be open-ended to encourage detailed responses
+- Include follow-up question suggestions in parentheses where relevant
+- Adjust technical depth based on the job level (Junior/Mid/Senior/Lead)
+- Make questions specific to the job title and department
+- Include scenario-based questions relevant to actual job responsibilities
+- If mandatory requirements exist, create questions to verify them"""
+            },
+            {
+                "role": "user", 
+                "content": f"""Based on the following job information, create a comprehensive set of 12-15 interview questions:
+
+{job_context}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRUCTURE YOUR RESPONSE WITH THESE SECTIONS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Câu hỏi phỏng vấn cho vị trí: {request.job_title}
+
+{category_names["technical"]}
+- Create 4-5 questions specific to:
+  * Required technical skills and technologies
+  * Relevant experience in similar roles  
+  * Hands-on problem-solving scenarios
+  * Best practices and methodologies
+  * Tools and frameworks mentioned in requirements
+
+Example format:
+1. [Technical question specific to the role]?
+   - Follow-up: [Deeper probing question]
+
+{category_names["soft"]}
+- Create 3-4 questions about:
+  * Teamwork and collaboration style
+  * Communication in challenging situations
+  * Adaptability and learning approach
+  * Conflict resolution
+  * Time management under pressure
+
+{category_names["situational"]}
+- Create 3-4 scenario-based questions:
+  * Real-world challenges specific to this role
+  * Decision-making under constraints
+  * Handling unexpected changes or failures
+  * Prioritization with competing demands
+  * Cross-functional collaboration scenarios
+
+{category_names["motivation"]}
+- Create 2-3 questions about:
+  * Why this specific role and company
+  * Career goals and alignment with position
+  * Professional development plans
+  * Long-term aspirations
+  * What success looks like to them
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL REQUIREMENTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Make questions SPECIFIC to "{request.job_title}" in "{request.department}"
+✅ Adjust difficulty for "{request.level}" level
+✅ Include verification questions for mandatory requirements if they exist
+✅ Use markdown formatting (##, -, numbers) for clear structure
+✅ Return ONLY the formatted markdown text
+✅ NO JSON wrapper, NO code blocks, NO explanations
+✅ Start directly with the heading "# Câu hỏi phỏng vấn..."
+
+Begin your response now:"""
+            }
+        ]
+        
+        print(f"🤖 Calling OpenRouter AI for interview questions...")
+        
+        result = call_openrouter_api(
+            messages=messages, 
+            model="openai/gpt-4o-mini", 
+            temperature=0.7,  # Balanced creativity for diverse questions
+            max_tokens=2500   # Enough for comprehensive questions
+        )
+        
+        print(f"✅ OpenRouter responded successfully")
+        
+        content = result['choices'][0]['message']['content'].strip()
+        
+        # Clean up any potential markdown code blocks
+        if content.startswith('```markdown'):
+            content = content.replace('```markdown', '', 1)
+        if content.startswith('```'):
+            content = content.replace('```', '', 1)
+        if content.endswith('```'):
+            content = content.rsplit('```', 1)[0]
+        
+        content = content.strip()
+        
+        # Count questions (approximate by counting question marks)
+        question_count = content.count('?')
+        
+        print(f"📊 Generated {len(content)} characters")
+        print(f"❓ Approximate question count: {question_count}")
+        print(f"===== INTERVIEW QUESTIONS GENERATION END =====\n")
+        
+        return {
+            "success": True,
+            "data": {
+                "questions": content,
+                "job_id": request.job_id,
+                "job_title": request.job_title,
+                "department": request.department,
+                "level": request.level
+            },
+            "message": "Interview questions generated successfully",
+            "metadata": {
+                "model": "gpt-4o-mini", 
+                "language": request.language,
+                "question_count": question_count,
+                "character_count": len(content)
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error generating interview questions: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error generating interview questions: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
