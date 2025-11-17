@@ -12,6 +12,3 @@ yarn-error.log*
 *.pem
 .vscode
 .idea
-"@ | Out-File -FilePath "frontend/.dockerignore" -Encoding utf8 -Force
-
-Write-Host " Created .dockerignore" -ForegroundColor Green

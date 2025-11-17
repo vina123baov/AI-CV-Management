@@ -1,19 +1,16 @@
+# Build stage
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files từ ROOT
+# Copy package files
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci
 
-# Copy source code từ thư mục src/
-COPY src ./src
-COPY index.html ./
-COPY vite.config.ts ./
-COPY tsconfig.json ./
-COPY tsconfig.node.json ./
+# Copy all source files
+COPY . .
 
 # Build arguments
 ARG VITE_API_URL
@@ -34,13 +31,13 @@ FROM nginx:alpine
 # Install wget for healthcheck
 RUN apk add --no-cache wget
 
-# Copy built files from dist/
+# Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80 (nginx default)
+# Expose port 80
 EXPOSE 80
 
 # Healthcheck
