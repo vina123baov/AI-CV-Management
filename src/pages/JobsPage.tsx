@@ -99,7 +99,7 @@ async function generateJobDescriptionAI(data: {
   try {
     console.log('🎯 Calling backend to generate job description...');
     
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
     
     const response = await fetch(`${API_URL}/api/generate-job-description`, {
       method: 'POST',
@@ -155,7 +155,7 @@ async function generateInterviewQuestionsAI(data: {
       level: data.level
     });
     
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
     
     const response = await fetch(`${API_URL}/api/generate-interview-questions`, {
       method: 'POST',
@@ -690,19 +690,7 @@ export function JobsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-orange-100 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Lượt xem</CardTitle>
-              <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Eye className="h-5 w-5 text-orange-600"/>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">0</div>
-              <p className="text-xs text-gray-500">+0</p>
-            </CardContent>
-          </Card>
-      </div>
+        </div>
 
       {/* Jobs Table */}
       <Card className="shadow-sm">
@@ -755,7 +743,6 @@ export function JobsPage() {
                   <TableHead className="text-gray-700 font-medium">Địa điểm</TableHead>
                   <TableHead className="text-gray-700 font-medium">Trạng thái</TableHead>
                   <TableHead className="text-gray-700 font-medium">Ứng viên</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Lượt xem</TableHead>
                   <TableHead className="text-gray-700 font-medium">Ngày tạo</TableHead>
                   <TableHead className="text-right text-gray-700 font-medium">Hành động</TableHead>
                 </TableRow>
@@ -763,13 +750,13 @@ export function JobsPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-gray-500">
+                    <TableCell colSpan={7} className="text-center h-24 text-gray-500">
                       Đang tải dữ liệu...
                     </TableCell>
                   </TableRow>
                 ) : filteredJobs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-gray-500">
+                    <TableCell colSpan={7} className="text-center h-24 text-gray-500">
                       Chưa có JD nào. Hãy tạo JD đầu tiên!
                     </TableCell>
                   </TableRow>
@@ -784,7 +771,6 @@ export function JobsPage() {
                       <TableCell className="text-gray-700">{job.work_location || job.location || '-'}</TableCell>
                       <TableCell>{getStatusBadge(job.status)}</TableCell>
                       <TableCell className="text-gray-700">{job.cv_candidates[0]?.count || 0}</TableCell>
-                      <TableCell className="text-gray-700">0</TableCell>
                       <TableCell className="text-gray-700">
                         {new Date(job.created_at).toLocaleDateString('vi-VN')}
                       </TableCell>

@@ -36,14 +36,11 @@ export const ProtectedRoute: React.FC<Props> = ({ children, requiredRole }) => {
   console.log("📋 Profile:", profile);
 
   // ========================================
-  // 🔓 ROLE CHECKING DISABLED TEMPORARILY
+  // ✅ ROLE CHECKING ENABLED
   // ========================================
-  // Uncomment this section when you want to re-enable role-based access control
-  
-  /*
   // Get user role from profile or user object (for custom auth)
   let userRole: string | undefined;
-  
+
   if ('isCustomAuth' in user && user.isCustomAuth) {
     // Custom auth user - role is in user object
     userRole = (user as any).role?.toUpperCase();
@@ -60,8 +57,8 @@ export const ProtectedRoute: React.FC<Props> = ({ children, requiredRole }) => {
 
   // Check role-based access if required
   if (requiredRole) {
-    const allowedRoles = Array.isArray(requiredRole) 
-      ? requiredRole.map(r => r.toUpperCase()) 
+    const allowedRoles = Array.isArray(requiredRole)
+      ? requiredRole.map(r => r.toUpperCase())
       : [requiredRole.toUpperCase()];
 
     console.log("🔐 Required role(s):", allowedRoles);
@@ -118,20 +115,7 @@ export const ProtectedRoute: React.FC<Props> = ({ children, requiredRole }) => {
 
     console.log("✅ Access granted - user has required role");
   }
-  */
 
-  // ========================================
-  // ✅ SIMPLIFIED ACCESS CONTROL
-  // ========================================
-  // For now, just check if user is authenticated
-  // All authenticated users can access all routes
-  
-  if (requiredRole) {
-    console.log("ℹ️ Role checking is currently disabled");
-    console.log("ℹ️ Required role:", requiredRole);
-    console.log("ℹ️ Allowing access for authenticated user");
-  }
-
-  console.log("✅ Access granted - user is authenticated");
+  console.log("✅ Access granted - user is authenticated with role:", userRole);
   return <>{children}</>;
 };

@@ -203,11 +203,24 @@ export default function PotentialCandidatesPage() {
 
       console.log('📊 Total candidates from DB:', candidatesData?.length || 0);
 
-      const parsedCandidates = (candidatesData || []).map((c: any) => ({
-        ...c,
-        analysis_result: c.cv_parsed_data?.analysis_result || null,
-        overall_score: c.cv_parsed_data?.analysis_result?.overall_score || 0,
-      }))
+      const parsedCandidates = (candidatesData || []).map((c: any) => {
+        const analysisResult = c.cv_parsed_data?.analysis_result || null;
+
+        // Find the score for the applied job position, not the best match
+        let appliedJobScore = 0;
+        if (analysisResult?.all_matches && c.job_id) {
+          const appliedJobMatch = analysisResult.all_matches.find(
+            (match: any) => match.job_id === c.job_id
+          );
+          appliedJobScore = appliedJobMatch?.match_score || 0;
+        }
+
+        return {
+          ...c,
+          analysis_result: analysisResult,
+          overall_score: appliedJobScore,
+        };
+      })
 
       setCandidates(parsedCandidates)
 
@@ -548,6 +561,9 @@ export default function PotentialCandidatesPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
               Xuất sắc (≥85)
+              <div className="text-xs text-gray-500 font-normal mt-1">
+                Theo vị trí đã apply
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -789,13 +805,18 @@ export default function PotentialCandidatesPage() {
 
           {selectedCandidate && (
             <div className="p-6 space-y-6">
-              {/* Overall Score */}
+              {/* Overall Score - Applied Job Position */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-xl border border-blue-200">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-blue-900 flex items-center gap-2">
-                    <Target className="h-5 w-5" />
-                    Điểm tổng thể
-                  </h4>
+                  <div>
+                    <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+                      <Target className="h-5 w-5" />
+                      Điểm phù hợp vị trí đã apply
+                    </h4>
+                    <p className="text-sm text-blue-700 mt-1">
+                      {selectedCandidate?.cv_jobs?.title}
+                    </p>
+                  </div>
                   <span className={`text-2xl font-bold ${getScoreColor(selectedCandidate.overall_score || 0)}`}>
                     {selectedCandidate.overall_score || 0}/100
                   </span>
