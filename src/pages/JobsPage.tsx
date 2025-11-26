@@ -1,7 +1,8 @@
+// src/pages/JobsPage.tsx - UPDATED WITH PERMISSIONS
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Plus, MoreHorizontal, FileText, CheckCircle, Users, Eye, Edit, Trash2, Share2, Copy, Sparkles, PenTool, X } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, FileText, CheckCircle, Users, Eye, Edit, Trash2, Share2, Copy, Sparkles, PenTool, X, ShieldAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -47,6 +48,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabaseClient"
+import { useModulePermissions } from "@/contexts/PermissionsContext"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -126,6 +129,12 @@ async function generateJobDescriptionAI(data: {
 
 export function JobsPage() {
   const { t, i18n } = useTranslation();
+  
+  // ========================================
+  // 🔐 PERMISSIONS CHECK
+  // ========================================
+  const permissions = useModulePermissions('jobs');
+  
   const [jobs, setJobs] = useState<Job[]>([]);
   const [totalCandidatesCount, setTotalCandidatesCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -203,8 +212,22 @@ export function JobsPage() {
     setEditFormData((prev: any) => ({ ...prev, [field]: value }));
   };
 
-  // ==================== AI GENERATE FUNCTION ====================
+  // ==================== PERMISSION-PROTECTED HANDLERS ====================
+  
+  const handleCreateClick = () => {
+    if (!permissions.canCreate) {
+      alert('❌ Bạn không có quyền tạo Job Description');
+      return;
+    }
+    setIsDialogOpen(true);
+  };
+
   const handleAIGenerate = async () => {
+    if (!permissions.canCreate) {
+      alert('❌ Bạn không có quyền sử dụng tính năng này');
+      return;
+    }
+
     if (!formData.title || !formData.department) {
       alert('❌ Vui lòng điền đầy đủ: Tiêu đề vị trí và Phòng ban');
       return;
@@ -242,8 +265,12 @@ export function JobsPage() {
     }
   };
 
-  // ==================== SUBMIT FUNCTION (ĐÃ SỬA - BỎ created_by) ====================
   const handleSubmit = async () => {
+    if (!permissions.canCreate) {
+      alert('❌ Bạn không có quyền tạo Job Description');
+      return;
+    }
+
     if (!formData.title || !formData.department) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc: Tiêu đề vị trí và Phòng ban');
       return;
@@ -258,7 +285,6 @@ export function JobsPage() {
 
     setIsSubmitting(true);
 
-    // ✅ CHỈ GỬI CÁC FIELD CÓ TRONG DATABASE
     const dataToInsert = {
       title: formData.title,
       department: formData.department,
@@ -323,11 +349,17 @@ export function JobsPage() {
   };
 
   const handleViewDetails = (job: Job) => {
+    // View không cần check permission vì đã được check ở route level
     setSelectedJob(job);
     setIsViewDialogOpen(true);
   };
 
   const handleEdit = (job: Job) => {
+    if (!permissions.canUpdate) {
+      alert('❌ Bạn không có quyền chỉnh sửa Job Description');
+      return;
+    }
+    
     setSelectedJob(job);
     setEditFormData({
       id: job.id,
@@ -347,6 +379,11 @@ export function JobsPage() {
   };
 
   const handleUpdateJob = async () => {
+    if (!permissions.canUpdate) {
+      alert('❌ Bạn không có quyền cập nhật Job Description');
+      return;
+    }
+
     if (!editFormData.title || !editFormData.department) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc');
       return;
@@ -385,6 +422,11 @@ export function JobsPage() {
   };
 
   const handleCopy = async (job: Job) => {
+    if (!permissions.canCreate) {
+      alert('❌ Bạn không có quyền sao chép Job Description');
+      return;
+    }
+
     const dataToInsert = {
       title: `${job.title} (Copy)`,
       department: job.department,
@@ -414,12 +456,14 @@ export function JobsPage() {
   };
 
   const handleShare = (job: Job) => {
+    // Share không cần permission check
     const jobUrl = `${window.location.origin}/jobs/${job.id}`;
     navigator.clipboard.writeText(jobUrl);
     alert('✅ Đã sao chép link chia sẻ vào clipboard!');
   };
 
   const handleGenerateAIQuestions = async (job: Job) => {
+    // AI Questions có thể dùng cho mọi user có quyền view
     setSelectedJob(job);
     setIsAIQuestionsDialogOpen(true);
     setGeneratingQuestions(true);
@@ -463,12 +507,17 @@ export function JobsPage() {
   };
 
   const handleDelete = (job: Job) => {
+    if (!permissions.canDelete) {
+      alert('❌ Bạn không có quyền xóa Job Description');
+      return;
+    }
+    
     setSelectedJob(job);
     setIsDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!selectedJob) return;
+    if (!selectedJob || !permissions.canDelete) return;
 
     setIsDeleting(true);
 
@@ -517,11 +566,38 @@ export function JobsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Mô tả công việc</h1>
           <p className="text-sm text-gray-500">Quản lý và tạo mô tả công việc</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={() => setIsDialogOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          {t('jobs.createNew')}
-        </Button>
+        
+        {/* 🔐 CREATE BUTTON - PERMISSION CHECK */}
+        {permissions.canCreate ? (
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm" 
+            onClick={handleCreateClick}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {t('jobs.createNew')}
+          </Button>
+        ) : (
+          <Button 
+            className="bg-gray-400 cursor-not-allowed" 
+            disabled
+            title="Bạn không có quyền tạo Job Description"
+          >
+            <ShieldAlert className="w-4 h-4 mr-2" />
+            Không có quyền tạo
+          </Button>
+        )}
       </div>
+
+      {/* 🔐 PERMISSION WARNING */}
+      {!permissions.canCreate && !permissions.canUpdate && !permissions.canDelete && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <ShieldAlert className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 text-sm">
+            <strong>Chế độ chỉ xem:</strong> Bạn chỉ có quyền xem danh sách Job Descriptions. 
+            Liên hệ Admin để được cấp thêm quyền.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -668,6 +744,7 @@ export function JobsPage() {
                         {new Date(job.created_at).toLocaleDateString('vi-VN')}
                       </TableCell>
                       <TableCell className="text-right">
+                        {/* 🔐 DROPDOWN MENU WITH PERMISSION CHECKS */}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-gray-100">
@@ -675,31 +752,67 @@ export function JobsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" side="top" className="w-48 bg-white z-50 shadow-lg border border-gray-200">
+                            {/* VIEW - Always available */}
                             <DropdownMenuItem className="cursor-pointer" onClick={() => handleViewDetails(job)}>
                               <Eye className="mr-2 h-4 w-4 text-gray-600" />
                               <span>Xem chi tiết</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleEdit(job)}>
-                              <Edit className="mr-2 h-4 w-4 text-gray-600" />
-                              <span>Chỉnh sửa</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleCopy(job)}>
-                              <Copy className="mr-2 h-4 w-4 text-gray-600" />
-                              <span>Sao chép</span>
-                            </DropdownMenuItem>
+                            
+                            {/* EDIT - Requires update permission */}
+                            {permissions.canUpdate ? (
+                              <DropdownMenuItem className="cursor-pointer" onClick={() => handleEdit(job)}>
+                                <Edit className="mr-2 h-4 w-4 text-gray-600" />
+                                <span>Chỉnh sửa</span>
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem className="cursor-not-allowed opacity-50" disabled>
+                                <Edit className="mr-2 h-4 w-4 text-gray-400" />
+                                <span className="text-gray-400">Chỉnh sửa</span>
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {/* COPY - Requires create permission */}
+                            {permissions.canCreate ? (
+                              <DropdownMenuItem className="cursor-pointer" onClick={() => handleCopy(job)}>
+                                <Copy className="mr-2 h-4 w-4 text-gray-600" />
+                                <span>Sao chép</span>
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem className="cursor-not-allowed opacity-50" disabled>
+                                <Copy className="mr-2 h-4 w-4 text-gray-400" />
+                                <span className="text-gray-400">Sao chép</span>
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {/* SHARE - Always available */}
                             <DropdownMenuItem className="cursor-pointer" onClick={() => handleShare(job)}>
                               <Share2 className="mr-2 h-4 w-4 text-gray-600" />
                               <span>Chia sẻ</span>
                             </DropdownMenuItem>
+                            
+                            {/* AI QUESTIONS - Always available for users with view permission */}
                             <DropdownMenuItem className="cursor-pointer" onClick={() => handleGenerateAIQuestions(job)}>
                               <Sparkles className="mr-2 h-4 w-4 text-purple-600" />
                               <span>Tạo câu hỏi AI</span>
                             </DropdownMenuItem>
+                            
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer" onClick={() => handleDelete(job)}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              <span>Xóa</span>
-                            </DropdownMenuItem>
+                            
+                            {/* DELETE - Requires delete permission */}
+                            {permissions.canDelete ? (
+                              <DropdownMenuItem 
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer" 
+                                onClick={() => handleDelete(job)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Xóa</span>
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem className="cursor-not-allowed opacity-50" disabled>
+                                <Trash2 className="mr-2 h-4 w-4 text-gray-400" />
+                                <span className="text-gray-400">Xóa</span>
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
