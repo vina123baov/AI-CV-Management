@@ -93,7 +93,7 @@ export function CandidateAutoComplete({
       const { data, error } = await query.order('full_name')
 
       if (error) throw error
-      setSuggestions(data || [])
+      setSuggestions((data as unknown as Candidate[]) || [])
       setIsOpen(true)
     } catch (error) {
       console.error('Error searching candidates:', error)
