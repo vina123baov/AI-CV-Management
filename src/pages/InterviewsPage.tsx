@@ -18,6 +18,20 @@ import { supabase } from "@/lib/supabaseClient"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CandidateAutoComplete } from "@/components/CandidateAutoComplete"
+
+// Định nghĩa kiểu dữ liệu cho ứng viên
+interface Candidate {
+  id: string;
+  full_name: string;
+  email: string;
+  job_id?: string;
+  cv_jobs?: {
+    id: string;
+    title: string;
+    level: string;
+  } | null;
+}
 
 // Định nghĩa kiểu dữ liệu cho một 'interview' từ database
 interface Interview {
@@ -29,6 +43,7 @@ interface Interview {
   status: string;
   duration: string;
   location: string;
+  end_time?: string;
   cv_candidates: {
     full_name: string;
     cv_jobs: {
@@ -45,11 +60,11 @@ export function InterviewsPage() {
   const [positionFilter, setPositionFilter] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [selectedInterview, setSelectedInterview] = useState<Interview | null>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [reviewData, setReviewData] = useState({
     rating: 0,
@@ -71,6 +86,52 @@ export function InterviewsPage() {
     notes: ""
   });
 
+  // Form errors state
+  const [formErrors, setFormErrors] = useState({
+    interview_date: "",
+    interview_time: "",
+    duration: ""
+  });
+
+  // Helper function to determine interview status based on time
+  const getInterviewStatus = (interview: Interview) => {
+    const now = new Date();
+    const interviewStart = new Date(interview.interview_date);
+
+    // If interview is already completed or cancelled, keep that status
+    if (interview.status === 'Hoàn thành' || interview.status === 'Đã hủy' || interview.status === 'Đang đánh giá') {
+      return interview.status;
+    }
+
+    // If interview has been manually ended, return "Đang chờ đánh giá"
+    if (interview.end_time) {
+      const endTime = new Date(interview.end_time);
+      if (endTime <= now) {
+        return 'Đang chờ đánh giá';
+      }
+    }
+
+    // Check if interview is today and within time window
+    const isToday = interviewStart.toDateString() === now.toDateString();
+    const isPast = interviewStart < now;
+
+    if (isToday && !isPast) {
+      return 'Đang phỏng vấn';
+    } else if (isPast) {
+      // Check if interview should still be ongoing based on duration
+      const durationMinutes = parseInt(interview.duration) || 60;
+      const expectedEndTime = new Date(interviewStart.getTime() + durationMinutes * 60000);
+
+      if (now <= expectedEndTime) {
+        return 'Đang phỏng vấn';
+      } else {
+        return 'Đang chờ đánh giá';
+      }
+    } else {
+      return 'Đang chờ';
+    }
+  };
+
   useEffect(() => {
     async function getInterviews() {
       setLoading(true);
@@ -86,7 +147,12 @@ export function InterviewsPage() {
         .order('interview_date', { ascending: false });
 
       if (data) {
-        setInterviews(data as Interview[]);
+        // Update status based on interview time
+        const updatedInterviews = data.map(interview => ({
+          ...interview,
+          status: getInterviewStatus(interview as Interview)
+        }));
+        setInterviews(updatedInterviews as Interview[]);
       }
       if (error) {
         console.error('Error fetching interviews:', error);
@@ -115,6 +181,27 @@ setLoading(false);
     loadFormData();
   }, []);
 
+  // Handle candidate selection with auto-fill job position
+  const handleCandidateSelect = (candidate: Candidate | null) => {
+    setSelectedCandidate(candidate);
+
+    if (candidate) {
+      // Update form with candidate info
+      setFormData(prev => ({
+        ...prev,
+        candidate_id: candidate.id,
+        job_id: candidate.cv_jobs?.id || ""
+      }));
+    } else {
+      // Clear form if no candidate selected
+      setFormData(prev => ({
+        ...prev,
+        candidate_id: "",
+        job_id: ""
+      }));
+    }
+  };
+
   // Tính toán thống kê
   const totalInterviews = interviews.length;
   const pendingInterviews = interviews.filter(i => i.status === 'Đang chờ').length;
@@ -140,6 +227,12 @@ setLoading(false);
         return 'bg-green-100 text-green-700 hover:bg-green-100';
       case 'Đang chờ':
         return 'bg-orange-100 text-orange-700 hover:bg-orange-100';
+      case 'Đang phỏng vấn':
+        return 'bg-blue-100 text-blue-700 hover:bg-blue-100';
+      case 'Đang đánh giá':
+        return 'bg-indigo-100 text-indigo-700 hover:bg-indigo-100';
+      case 'Đang chờ đánh giá':
+        return 'bg-purple-100 text-purple-700 hover:bg-purple-100';
       case 'Đã hủy':
         return 'bg-red-100 text-red-700 hover:bg-red-100';
       default:
@@ -147,9 +240,66 @@ setLoading(false);
     }
   };
 
+  // Validate interview date and time
+  const validateInterviewDateTime = () => {
+    const errors = {
+      interview_date: "",
+      interview_time: "",
+      duration: ""
+    };
+
+    if (!formData.interview_date) {
+      errors.interview_date = "Vui lòng chọn ngày phỏng vấn";
+      setFormErrors(errors);
+      return false;
+    }
+
+    if (!formData.interview_time) {
+      errors.interview_time = "Vui lòng chọn giờ phỏng vấn";
+      setFormErrors(errors);
+      return false;
+    }
+
+    // Validate duration (minimum 5 minutes)
+    const duration = parseInt(formData.duration);
+    if (!duration || duration < 5) {
+      errors.duration = "Thời lượng phỏng vấn tối thiểu là 5 phút";
+      setFormErrors(errors);
+      return false;
+    }
+
+    // Create interview date object
+    const interviewDateTime = new Date(`${formData.interview_date}T${formData.interview_time}`);
+    const now = new Date();
+
+    // Check if date/time is valid
+    if (isNaN(interviewDateTime.getTime())) {
+      errors.interview_date = "Ngày và giờ phỏng vấn không hợp lệ";
+      setFormErrors(errors);
+      return false;
+    }
+
+    // Check if date/time is in the past
+    if (interviewDateTime <= now) {
+      errors.interview_date = "Ngày và giờ phỏng vấn phải là thời điểm trong tương lai";
+      errors.interview_time = "Ngày và giờ phỏng vấn phải là thời điểm trong tương lai";
+      setFormErrors(errors);
+      return false;
+    }
+
+    setFormErrors(errors);
+    return true;
+  };
+
   // Handle form submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate form
+    if (!validateInterviewDateTime()) {
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -203,8 +353,14 @@ cv_jobs!job_id ( title )
         interviewer: "",
         notes: ""
       });
+      setFormErrors({
+        interview_date: "",
+        interview_time: "",
+        duration: ""
+      });
+      setSelectedCandidate(null);
       setIsDialogOpen(false);
-      
+
       alert('Tạo lịch phỏng vấn thành công!');
     } catch (error) {
       console.error('Error creating interview:', error);
@@ -220,33 +376,28 @@ cv_jobs!job_id ( title )
     setIsDetailDialogOpen(true);
   };
 
-  // Chỉnh sửa trạng thái
-  const handleEditStatus = (interview: Interview) => {
-    setSelectedInterview(interview);
-    setIsEditDialogOpen(true);
-  };
-
-  // Cập nhật trạng thái
-  const handleUpdateStatus = async (newStatus: string) => {
-    if (!selectedInterview) return;
-    
-    // Nếu chọn "Hoàn thành", mở dialog đánh giá
-    if (newStatus === 'Hoàn thành') {
-      setIsEditDialogOpen(false);
-      setIsReviewDialogOpen(true);
+  // Kết thúc sớm buổi phỏng vấn
+  const handleEndInterview = async (interview: Interview) => {
+    if (!confirm(`Bạn có chắc muốn kết thúc sớm buổi phỏng vấn với ${interview.cv_candidates?.full_name}?`)) {
       return;
     }
-    
+
     setSubmitting(true);
     try {
+      const now = new Date();
+
+      // Cập nhật interview với end_time và status
       const { error } = await supabase
         .from('cv_interviews')
-        .update({ status: newStatus })
-        .eq('id', selectedInterview.id);
+        .update({
+          end_time: now.toISOString(),
+          status: 'Đang đánh giá'
+        })
+        .eq('id', interview.id);
 
       if (error) throw error;
 
-      // Refresh danh sách
+      // Refresh danh sách interviews
       const { data: updatedInterviews } = await supabase
         .from('cv_interviews')
         .select(`
@@ -262,16 +413,15 @@ cv_jobs!job_id ( title )
         setInterviews(updatedInterviews as Interview[]);
       }
 
-      setIsEditDialogOpen(false);
-      setSelectedInterview(null);
-      alert('Cập nhật trạng thái thành công!');
+      alert('Buổi phỏng vấn đã được kết thúc và chuyển sang trạng thái chờ đánh giá!');
     } catch (error) {
-      console.error('Error updating status:', error);
-      alert('Có lỗi xảy ra khi cập nhật trạng thái!');
+      console.error('Error ending interview:', error);
+      alert('Có lỗi xảy ra khi kết thúc buổi phỏng vấn!');
     } finally {
       setSubmitting(false);
     }
   };
+
 
   // Submit đánh giá
   const handleSubmitReview = async () => {
@@ -479,6 +629,9 @@ cv_jobs!job_id ( title )
           <SelectContent className="bg-white">
             <SelectItem value="all">Tất cả trạng thái</SelectItem>
             <SelectItem value="Đang chờ">Đang chờ</SelectItem>
+            <SelectItem value="Đang phỏng vấn">Đang phỏng vấn</SelectItem>
+            <SelectItem value="Đang đánh giá">Đang đánh giá</SelectItem>
+            <SelectItem value="Đang chờ đánh giá">Đang chờ đánh giá</SelectItem>
             <SelectItem value="Hoàn thành">Hoàn thành</SelectItem>
             <SelectItem value="Đã hủy">Đã hủy</SelectItem>
           </SelectContent>
@@ -579,10 +732,16 @@ cv_jobs!job_id ( title )
                           <DropdownMenuItem onClick={() => handleViewDetail(interview)}>
                             Xem chi tiết
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEditStatus(interview)}>
-                            Chỉnh sửa
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          {interview.status === 'Đang phỏng vấn' && (
+                            <DropdownMenuItem
+                              className="text-orange-600"
+                              onClick={() => handleEndInterview(interview)}
+                              disabled={submitting}
+                            >
+                              Kết thúc sớm
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
                             className="text-red-600"
                             onClick={() => handleDelete(interview)}
                           >
@@ -640,46 +799,65 @@ cv_jobs!job_id ( title )
                   <User className="w-4 h-4" />
                   Ứng viên <span className="text-red-500">*</span>
                 </label>
-                <Select 
-                  value={formData.candidate_id} 
-                  onValueChange={(value) => setFormData({...formData, candidate_id: value})}
-                  required
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Chọn ứng viên" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                    {candidates.map((candidate) => (
-                      <SelectItem key={candidate.id} value={candidate.id}>
-                        {candidate.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CandidateAutoComplete
+                  onCandidateSelect={handleCandidateSelect}
+                  placeholder="Nhập tên hoặc email ứng viên..."
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500">
+                  Nhập tên hoặc email ứng viên. Hệ thống sẽ tự động gợi ý và điền thông tin.
+                  Nếu có nhiều ứng viên cùng tên, hệ thống sẽ hiển thị danh sách email để lựa chọn.
+                </p>
               </div>
 
               {/* Vị trí ứng tuyển */}
               <div className="space-y-2">
-<label className="flex items-center gap-2 text-sm font-medium">
+                <label className="flex items-center gap-2 text-sm font-medium">
                   <Briefcase className="w-4 h-4" />
                   Vị trí ứng tuyển <span className="text-red-500">*</span>
                 </label>
-                <Select 
-                  value={formData.job_id}
-                  onValueChange={(value) => setFormData({...formData, job_id: value})}
-                  required
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Chọn vị trí ứng tuyển" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                    {jobs.map((job) => (
-                      <SelectItem key={job.id} value={job.id}>
-                        {job.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+                {selectedCandidate?.cv_jobs ? (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">
+                        Vị trí đang ứng tuyển:
+                      </p>
+                      <p className="text-base font-semibold text-blue-900">
+                        {selectedCandidate.cv_jobs.title}
+                      </p>
+                      <p className="text-xs text-blue-600">
+                        Cấp bậc: {selectedCandidate.cv_jobs.level}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <Select
+                    value={formData.job_id}
+                    onValueChange={(value) => setFormData({...formData, job_id: value})}
+                    required
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Chọn vị trí ứng tuyển" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
+                      {jobs.map((job) => (
+                        <SelectItem key={job.id} value={job.id}>
+                          {job.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {selectedCandidate && (
+                  <p className="text-xs text-gray-500">
+                    {selectedCandidate.cv_jobs
+                      ? "Vị trí ứng tuyển sẽ được tự động điền từ thông tin ứng viên."
+                      : "Ứng viên này chưa có vị trí ứng tuyển. Vui lòng chọn vị trí phỏng vấn."
+                    }
+                  </p>
+                )}
               </div>
 
               {/* Vòng phỏng vấn */}
@@ -711,20 +889,39 @@ cv_jobs!job_id ( title )
                   <Input
                     type="date"
                     value={formData.interview_date}
-                    onChange={(e) => setFormData({...formData, interview_date: e.target.value})}
+                    onChange={(e) => {
+                      setFormData({...formData, interview_date: e.target.value});
+                      // Clear error when user changes the value
+                      if (formErrors.interview_date) {
+                        setFormErrors({...formErrors, interview_date: ""});
+                      }
+                    }}
                     required
-                    className="bg-white"
+                    className={`${formErrors.interview_date ? "border-red-500" : ""} bg-white`}
+                    min={new Date().toISOString().split('T')[0]}
                   />
+                  {formErrors.interview_date && (
+                    <p className="text-xs text-red-500">{formErrors.interview_date}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Giờ phỏng vấn <span className="text-red-500">*</span></label>
                   <Input
                     type="time"
                     value={formData.interview_time}
-onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
+                    onChange={(e) => {
+                      setFormData({...formData, interview_time: e.target.value});
+                      // Clear error when user changes the value
+                      if (formErrors.interview_time) {
+                        setFormErrors({...formErrors, interview_time: ""});
+                      }
+                    }}
                     required
-                    className="bg-white"
+                    className={`${formErrors.interview_time ? "border-red-500" : ""} bg-white`}
                   />
+                  {formErrors.interview_time && (
+                    <p className="text-xs text-red-500">{formErrors.interview_time}</p>
+                  )}
                 </div>
               </div>
 
@@ -737,12 +934,21 @@ onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
                 <Input
                   type="number"
                   value={formData.duration}
-                  onChange={(e) => setFormData({...formData, duration: e.target.value})}
+                  onChange={(e) => {
+                    setFormData({...formData, duration: e.target.value});
+                    // Clear error when user changes the value
+                    if (formErrors.duration) {
+                      setFormErrors({...formErrors, duration: ""});
+                    }
+                  }}
                   placeholder="60"
-                  min="15"
-                  step="15"
-                  className="bg-white"
+                  min="5"
+                  step="5"
+                  className={`${formErrors.duration ? "border-red-500" : ""} bg-white`}
                 />
+                {formErrors.duration && (
+                  <p className="text-xs text-red-500">{formErrors.duration}</p>
+                )}
               </div>
 
               {/* Địa điểm */}
@@ -819,7 +1025,7 @@ onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
                 <Button 
                   type="submit" 
                   className="bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={submitting || !formData.candidate_id || !formData.round || !formData.interview_date || !formData.interview_time || !formData.interviewer}
+                  disabled={submitting || !selectedCandidate || !formData.job_id || !formData.round || !formData.interview_date || !formData.interview_time || !formData.interviewer}
                 >
                   <Calendar className="w-4 h-4 mr-2" />
                   {submitting ? 'Đang tạo...' : 'Tạo lịch phỏng vấn'}
@@ -918,76 +1124,7 @@ onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
         </>
       )}
 
-      {/* Dialog Chỉnh Sửa Trạng Thái */}
-      {isEditDialogOpen && selectedInterview && (
-        <>
-          <div
-className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-            style={{ zIndex: 999999 }}
-            onClick={() => setIsEditDialogOpen(false)}
-          />
-          
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1000000 }}>
-            <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-md m-4 pointer-events-auto">
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
-                <h2 className="text-xl font-semibold">Cập nhật trạng thái</h2>
-                <button
-                  onClick={() => setIsEditDialogOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6">
-                <p className="text-sm text-gray-600 mb-4">
-                  Chọn trạng thái mới cho buổi phỏng vấn với <strong>{selectedInterview.cv_candidates?.full_name}</strong>
-                </p>
-                
-                <div className="space-y-2">
-                  <button
-                    onClick={() => handleUpdateStatus('Đang chờ')}
-                    disabled={submitting}
-                    className="w-full px-4 py-3 text-left rounded-lg border hover:bg-orange-50 transition-colors flex items-center justify-between disabled:opacity-50"
-                  >
-                    <span>Đang chờ</span>
-                    <Badge className="bg-orange-100 text-orange-700">Đang chờ</Badge>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleUpdateStatus('Hoàn thành')}
-                    disabled={submitting}
-                    className="w-full px-4 py-3 text-left rounded-lg border hover:bg-green-50 transition-colors flex items-center justify-between disabled:opacity-50"
-                  >
-                    <span>Hoàn thành</span>
-                    <Badge className="bg-green-100 text-green-700">Hoàn thành</Badge>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleUpdateStatus('Đã hủy')}
-                    disabled={submitting}
-                    className="w-full px-4 py-3 text-left rounded-lg border hover:bg-red-50 transition-colors flex items-center justify-between disabled:opacity-50"
-                  >
-                    <span>Đã hủy</span>
-                    <Badge className="bg-red-100 text-red-700">Đã hủy</Badge>
-                  </button>
-                </div>
-              </div>
-
-              <div className="border-t px-6 py-4 flex justify-end">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setIsEditDialogOpen(false)}
-                  disabled={submitting}
-                >
-                  Hủy
-</Button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
+  
       {/* Dialog Đánh giá sau khi Hoàn thành */}
       {isReviewDialogOpen && selectedInterview && (
         <>
