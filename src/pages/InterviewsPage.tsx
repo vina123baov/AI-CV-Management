@@ -86,9 +86,9 @@ export function InterviewsPage() {
         candidate_id: candidateId
       }));
     }
-
-    // ✅ Xóa URL params sau khi đã xử lý để tránh dialog tự mở lại
-    window.history.replaceState({}, '', '/interviews');
+    
+    // ✅ Thêm dòng này để xóa URL params
+    window.history.replaceState({}, '', '/phong-van');
    }
   }, []);
 

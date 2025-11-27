@@ -1,8 +1,7 @@
-// src/pages/JobsPage.tsx - UPDATED WITH PERMISSIONS
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Plus, MoreHorizontal, FileText, CheckCircle, Users, Eye, Edit, Trash2, Share2, Copy, Sparkles, PenTool, X, ShieldAlert } from 'lucide-react'
+import { Search, Plus, MoreHorizontal, FileText, CheckCircle, Users, Eye, Edit, Trash2, Share2, Copy, Sparkles, PenTool, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -48,8 +47,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabaseClient"
-import { useModulePermissions } from "@/contexts/PermissionsContext"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+
+// ==================== HELPER FUNCTIONS ====================
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -63,6 +62,8 @@ const getStatusBadge = (status: string) => {
       return <Badge variant="secondary">{status}</Badge>
   }
 }
+
+// ==================== INTERFACES ====================
 
 interface Job {
   id: string;
@@ -81,7 +82,11 @@ interface Job {
   cv_candidates: { count: number }[];
 }
 
-// ==================== AI SERVICE FUNCTION ====================
+// ==================== AI SERVICE FUNCTIONS ====================
+
+/**
+ * Generate job description using AI
+ */
 async function generateJobDescriptionAI(data: {
   title: string;
   level: string;
@@ -94,7 +99,7 @@ async function generateJobDescriptionAI(data: {
   try {
     console.log('🎯 Calling backend to generate job description...');
     
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
     
     const response = await fetch(`${API_URL}/api/generate-job-description`, {
       method: 'POST',
@@ -127,18 +132,83 @@ async function generateJobDescriptionAI(data: {
   }
 }
 
+/**
+ * ✅ NEW FUNCTION - Generate interview questions using AI
+ */
+async function generateInterviewQuestionsAI(data: {
+  job_id: string;
+  job_title: string;
+  department: string;
+  level: string;
+  job_type?: string;
+  work_location?: string;
+  description?: string;
+  requirements?: string;
+  mandatory_requirements?: string;
+  language: string;
+}) {
+  try {
+    console.log('💬 Calling backend to generate interview questions...');
+    console.log('📋 Job details:', {
+      title: data.job_title,
+      department: data.department,
+      level: data.level
+    });
+    
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+    
+    const response = await fetch(`${API_URL}/api/generate-interview-questions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log('📥 Backend response status:', response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Backend error:', errorData);
+      throw new Error(errorData.detail || `Backend error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Interview questions generated successfully');
+    console.log(`📊 Metadata:`, result.metadata);
+
+    if (result.success && result.data) {
+      return result.data;
+    }
+
+    throw new Error('Backend không trả về dữ liệu hợp lệ');
+
+  } catch (error) {
+    console.error('❌ Lỗi khi gọi backend:', error);
+    throw error;
+  }
+}
+
+// ==================== MAIN COMPONENT ====================
+
 export function JobsPage() {
   const { t, i18n } = useTranslation();
   
-  // ========================================
-  // 🔐 PERMISSIONS CHECK
-  // ========================================
-  const permissions = useModulePermissions('jobs');
+  // ==================== STATE MANAGEMENT ====================
   
+  // Job list states
   const [jobs, setJobs] = useState<Job[]>([]);
   const [totalCandidatesCount, setTotalCandidatesCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  
+  // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isAIQuestionsDialogOpen, setIsAIQuestionsDialogOpen] = useState(false);
+  
+  // Create/Edit form states
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('manual');
   const [formData, setFormData] = useState({
     title: '',
@@ -154,27 +224,32 @@ export function JobsPage() {
     mandatory_requirements: '',
     posted_date: new Date().toISOString().split('T')[0]
   });
+  const [editFormData, setEditFormData] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [aiLanguage, setAiLanguage] = useState('vietnamese');
+  
+  // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
-
-  // States cho các chức năng khác
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isAIQuestionsDialogOpen, setIsAIQuestionsDialogOpen] = useState(false);
+  
+  // Selected job and actions
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [editFormData, setEditFormData] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // ✅ NEW STATES - AI Interview Questions
   const [aiQuestions, setAiQuestions] = useState('');
   const [generatingQuestions, setGeneratingQuestions] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [aiQuestionLanguage, setAiQuestionLanguage] = useState<'vietnamese' | 'english'>('vietnamese');
+
+  // ==================== LIFECYCLE HOOKS ====================
 
   useEffect(() => {
     fetchJobs();
   }, []);
+
+  // ==================== DATA FETCHING ====================
 
   async function fetchJobs() {
     setLoading(true);
@@ -204,6 +279,8 @@ export function JobsPage() {
     setLoading(false);
   }
 
+  // ==================== FORM HANDLERS ====================
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -212,22 +289,12 @@ export function JobsPage() {
     setEditFormData((prev: any) => ({ ...prev, [field]: value }));
   };
 
-  // ==================== PERMISSION-PROTECTED HANDLERS ====================
-  
-  const handleCreateClick = () => {
-    if (!permissions.canCreate) {
-      alert('❌ Bạn không có quyền tạo Job Description');
-      return;
-    }
-    setIsDialogOpen(true);
-  };
+  // ==================== AI GENERATION HANDLERS ====================
 
+  /**
+   * Handle AI Job Description Generation
+   */
   const handleAIGenerate = async () => {
-    if (!permissions.canCreate) {
-      alert('❌ Bạn không có quyền sử dụng tính năng này');
-      return;
-    }
-
     if (!formData.title || !formData.department) {
       alert('❌ Vui lòng điền đầy đủ: Tiêu đề vị trí và Phòng ban');
       return;
@@ -265,12 +332,75 @@ export function JobsPage() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (!permissions.canCreate) {
-      alert('❌ Bạn không có quyền tạo Job Description');
+  /**
+   * ✅ NEW HANDLER - Generate Interview Questions with AI
+   */
+  const handleGenerateAIQuestions = async (job: Job) => {
+    console.log('🎯 Starting interview questions generation for:', job.title);
+    
+    setSelectedJob(job);
+    setIsAIQuestionsDialogOpen(true);
+    setGeneratingQuestions(true);
+    setAiQuestions('');
+
+    try {
+      console.log('📤 Calling AI service with job data...');
+      
+      // Call AI service with comprehensive job information
+      const result = await generateInterviewQuestionsAI({
+        job_id: job.id,
+        job_title: job.title,
+        department: job.department,
+        level: job.level,
+        job_type: job.job_type || 'Full-time',
+        work_location: job.work_location || job.location || 'Remote',
+        description: job.description || undefined,
+        requirements: job.requirements || undefined,
+        mandatory_requirements: job.mandatory_requirements || undefined,
+        language: aiQuestionLanguage
+      });
+
+      console.log('✅ Questions received from AI');
+      setAiQuestions(result.questions);
+      
+    } catch (error: any) {
+      console.error('❌ Error generating AI questions:', error);
+      
+      // User-friendly error message
+      const errorMessage = `Không thể tạo câu hỏi: ${error.message || 'Vui lòng thử lại sau'}`;
+      alert(`❌ ${errorMessage}`);
+      
+      // Set fallback message in dialog
+      setAiQuestions(`# ❌ Lỗi tạo câu hỏi\n\n${errorMessage}\n\nVui lòng thử lại hoặc liên hệ quản trị viên nếu lỗi tiếp tục xảy ra.`);
+      
+    } finally {
+      setGeneratingQuestions(false);
+      console.log('🏁 Interview questions generation process completed');
+    }
+  };
+
+  /**
+   * Copy AI generated questions to clipboard
+   */
+  const handleCopyAIQuestions = () => {
+    if (!aiQuestions) {
+      alert('⚠️ Không có câu hỏi để sao chép');
       return;
     }
+    
+    navigator.clipboard.writeText(aiQuestions)
+      .then(() => {
+        alert('✅ Đã sao chép câu hỏi vào clipboard!');
+      })
+      .catch((err) => {
+        console.error('Failed to copy:', err);
+        alert('❌ Không thể sao chép. Vui lòng thử lại.');
+      });
+  };
 
+  // ==================== FORM SUBMISSION ====================
+
+  const handleSubmit = async () => {
     if (!formData.title || !formData.department) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc: Tiêu đề vị trí và Phòng ban');
       return;
@@ -285,6 +415,7 @@ export function JobsPage() {
 
     setIsSubmitting(true);
 
+    // ✅ CHỈ GỬI CÁC FIELD CÓ TRONG DATABASE
     const dataToInsert = {
       title: formData.title,
       department: formData.department,
@@ -347,19 +478,14 @@ export function JobsPage() {
       posted_date: new Date().toISOString().split('T')[0]
     });
   };
+  // ==================== CRUD OPERATIONS ====================
 
   const handleViewDetails = (job: Job) => {
-    // View không cần check permission vì đã được check ở route level
     setSelectedJob(job);
     setIsViewDialogOpen(true);
   };
 
   const handleEdit = (job: Job) => {
-    if (!permissions.canUpdate) {
-      alert('❌ Bạn không có quyền chỉnh sửa Job Description');
-      return;
-    }
-    
     setSelectedJob(job);
     setEditFormData({
       id: job.id,
@@ -379,11 +505,6 @@ export function JobsPage() {
   };
 
   const handleUpdateJob = async () => {
-    if (!permissions.canUpdate) {
-      alert('❌ Bạn không có quyền cập nhật Job Description');
-      return;
-    }
-
     if (!editFormData.title || !editFormData.department) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc');
       return;
@@ -422,11 +543,6 @@ export function JobsPage() {
   };
 
   const handleCopy = async (job: Job) => {
-    if (!permissions.canCreate) {
-      alert('❌ Bạn không có quyền sao chép Job Description');
-      return;
-    }
-
     const dataToInsert = {
       title: `${job.title} (Copy)`,
       department: job.department,
@@ -456,68 +572,18 @@ export function JobsPage() {
   };
 
   const handleShare = (job: Job) => {
-    // Share không cần permission check
     const jobUrl = `${window.location.origin}/jobs/${job.id}`;
     navigator.clipboard.writeText(jobUrl);
     alert('✅ Đã sao chép link chia sẻ vào clipboard!');
   };
 
-  const handleGenerateAIQuestions = async (job: Job) => {
-    // AI Questions có thể dùng cho mọi user có quyền view
-    setSelectedJob(job);
-    setIsAIQuestionsDialogOpen(true);
-    setGeneratingQuestions(true);
-    setAiQuestions('');
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const mockQuestions = `# Câu hỏi phỏng vấn cho vị trí: ${job.title}
-
-## Phần 1: Kiến thức chuyên môn
-1. Hãy mô tả kinh nghiệm của bạn với các công nghệ liên quan đến vị trí ${job.title}?
-2. Bạn đã từng giải quyết vấn đề kỹ thuật phức tạp nào? Cách tiếp cận của bạn là gì?
-3. Trong dự án gần đây nhất, bạn đã đóng góp như thế nào?
-
-## Phần 2: Kỹ năng mềm
-4. Bạn xử lý xung đột trong team như thế nào?
-5. Hãy chia sẻ về một lần bạn phải làm việc dưới áp lực deadline gấp rút?
-6. Bạn cập nhật kiến thức mới trong lĩnh vực ${job.department} như thế nào?
-
-## Phần 3: Tình huống thực tế
-7. Nếu có một yêu cầu thay đổi đột xuất từ khách hàng, bạn sẽ xử lý ra sao?
-8. Làm thế nào bạn đảm bảo chất lượng công việc của mình?
-9. Bạn có kinh nghiệm làm việc với team remote không? Chia sẻ về điều đó?
-
-## Phần 4: Định hướng phát triển
-10. Mục tiêu nghề nghiệp của bạn trong 2-3 năm tới là gì?`;
-
-      setAiQuestions(mockQuestions);
-    } catch (error) {
-      console.error('Error generating AI questions:', error);
-      alert('❌ Lỗi khi tạo câu hỏi AI');
-    } finally {
-      setGeneratingQuestions(false);
-    }
-  };
-
-  const handleCopyAIQuestions = () => {
-    navigator.clipboard.writeText(aiQuestions);
-    alert('✅ Đã sao chép câu hỏi vào clipboard!');
-  };
-
   const handleDelete = (job: Job) => {
-    if (!permissions.canDelete) {
-      alert('❌ Bạn không có quyền xóa Job Description');
-      return;
-    }
-    
     setSelectedJob(job);
     setIsDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!selectedJob || !permissions.canDelete) return;
+    if (!selectedJob) return;
 
     setIsDeleting(true);
 
@@ -539,6 +605,8 @@ export function JobsPage() {
     setIsDeleting(false);
   };
 
+  // ==================== FILTERING ====================
+
   const filteredJobs = jobs.filter((job) => {
     const lowerQuery = searchQuery.toLowerCase();
     const matchesSearch =
@@ -555,8 +623,12 @@ export function JobsPage() {
     return matchesSearch && matchesStatus && matchesDepartment;
   });
 
+  // ==================== STATISTICS ====================
+
   const totalJobs = jobs.length;
   const openJobs = jobs.filter(job => job.status === 'Đã đăng' || job.status === 'Published').length;
+
+  // ==================== RENDER ====================
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 space-y-6">
@@ -566,38 +638,11 @@ export function JobsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Mô tả công việc</h1>
           <p className="text-sm text-gray-500">Quản lý và tạo mô tả công việc</p>
         </div>
-        
-        {/* 🔐 CREATE BUTTON - PERMISSION CHECK */}
-        {permissions.canCreate ? (
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm" 
-            onClick={handleCreateClick}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            {t('jobs.createNew')}
-          </Button>
-        ) : (
-          <Button 
-            className="bg-gray-400 cursor-not-allowed" 
-            disabled
-            title="Bạn không có quyền tạo Job Description"
-          >
-            <ShieldAlert className="w-4 h-4 mr-2" />
-            Không có quyền tạo
-          </Button>
-        )}
+        <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={() => setIsDialogOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          {t('jobs.createNew')}
+        </Button>
       </div>
-
-      {/* 🔐 PERMISSION WARNING */}
-      {!permissions.canCreate && !permissions.canUpdate && !permissions.canDelete && (
-        <Alert className="border-amber-200 bg-amber-50">
-          <ShieldAlert className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-800 text-sm">
-            <strong>Chế độ chỉ xem:</strong> Bạn chỉ có quyền xem danh sách Job Descriptions. 
-            Liên hệ Admin để được cấp thêm quyền.
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -645,19 +690,7 @@ export function JobsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-orange-100 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Lượt xem</CardTitle>
-              <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Eye className="h-5 w-5 text-orange-600"/>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">0</div>
-              <p className="text-xs text-gray-500">+0</p>
-            </CardContent>
-          </Card>
-      </div>
+        </div>
 
       {/* Jobs Table */}
       <Card className="shadow-sm">
@@ -710,7 +743,6 @@ export function JobsPage() {
                   <TableHead className="text-gray-700 font-medium">Địa điểm</TableHead>
                   <TableHead className="text-gray-700 font-medium">Trạng thái</TableHead>
                   <TableHead className="text-gray-700 font-medium">Ứng viên</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Lượt xem</TableHead>
                   <TableHead className="text-gray-700 font-medium">Ngày tạo</TableHead>
                   <TableHead className="text-right text-gray-700 font-medium">Hành động</TableHead>
                 </TableRow>
@@ -718,13 +750,13 @@ export function JobsPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-gray-500">
+                    <TableCell colSpan={7} className="text-center h-24 text-gray-500">
                       Đang tải dữ liệu...
                     </TableCell>
                   </TableRow>
                 ) : filteredJobs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-gray-500">
+                    <TableCell colSpan={7} className="text-center h-24 text-gray-500">
                       Chưa có JD nào. Hãy tạo JD đầu tiên!
                     </TableCell>
                   </TableRow>
@@ -739,12 +771,10 @@ export function JobsPage() {
                       <TableCell className="text-gray-700">{job.work_location || job.location || '-'}</TableCell>
                       <TableCell>{getStatusBadge(job.status)}</TableCell>
                       <TableCell className="text-gray-700">{job.cv_candidates[0]?.count || 0}</TableCell>
-                      <TableCell className="text-gray-700">0</TableCell>
                       <TableCell className="text-gray-700">
                         {new Date(job.created_at).toLocaleDateString('vi-VN')}
                       </TableCell>
                       <TableCell className="text-right">
-                        {/* 🔐 DROPDOWN MENU WITH PERMISSION CHECKS */}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-gray-100">
@@ -752,67 +782,31 @@ export function JobsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" side="top" className="w-48 bg-white z-50 shadow-lg border border-gray-200">
-                            {/* VIEW - Always available */}
                             <DropdownMenuItem className="cursor-pointer" onClick={() => handleViewDetails(job)}>
                               <Eye className="mr-2 h-4 w-4 text-gray-600" />
                               <span>Xem chi tiết</span>
                             </DropdownMenuItem>
-                            
-                            {/* EDIT - Requires update permission */}
-                            {permissions.canUpdate ? (
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => handleEdit(job)}>
-                                <Edit className="mr-2 h-4 w-4 text-gray-600" />
-                                <span>Chỉnh sửa</span>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem className="cursor-not-allowed opacity-50" disabled>
-                                <Edit className="mr-2 h-4 w-4 text-gray-400" />
-                                <span className="text-gray-400">Chỉnh sửa</span>
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {/* COPY - Requires create permission */}
-                            {permissions.canCreate ? (
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => handleCopy(job)}>
-                                <Copy className="mr-2 h-4 w-4 text-gray-600" />
-                                <span>Sao chép</span>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem className="cursor-not-allowed opacity-50" disabled>
-                                <Copy className="mr-2 h-4 w-4 text-gray-400" />
-                                <span className="text-gray-400">Sao chép</span>
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {/* SHARE - Always available */}
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleEdit(job)}>
+                              <Edit className="mr-2 h-4 w-4 text-gray-600" />
+                              <span>Chỉnh sửa</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleCopy(job)}>
+                              <Copy className="mr-2 h-4 w-4 text-gray-600" />
+                              <span>Sao chép</span>
+                            </DropdownMenuItem>
                             <DropdownMenuItem className="cursor-pointer" onClick={() => handleShare(job)}>
                               <Share2 className="mr-2 h-4 w-4 text-gray-600" />
                               <span>Chia sẻ</span>
                             </DropdownMenuItem>
-                            
-                            {/* AI QUESTIONS - Always available for users with view permission */}
                             <DropdownMenuItem className="cursor-pointer" onClick={() => handleGenerateAIQuestions(job)}>
                               <Sparkles className="mr-2 h-4 w-4 text-purple-600" />
                               <span>Tạo câu hỏi AI</span>
                             </DropdownMenuItem>
-                            
                             <DropdownMenuSeparator />
-                            
-                            {/* DELETE - Requires delete permission */}
-                            {permissions.canDelete ? (
-                              <DropdownMenuItem 
-                                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer" 
-                                onClick={() => handleDelete(job)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                <span>Xóa</span>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem className="cursor-not-allowed opacity-50" disabled>
-                                <Trash2 className="mr-2 h-4 w-4 text-gray-400" />
-                                <span className="text-gray-400">Xóa</span>
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer" onClick={() => handleDelete(job)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              <span>Xóa</span>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1428,28 +1422,154 @@ export function JobsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Câu hỏi AI */}
+      {/* ==================== ✅ NEW DIALOG - AI INTERVIEW QUESTIONS ==================== */}
       <Dialog open={isAIQuestionsDialogOpen} onOpenChange={setIsAIQuestionsDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600" />
-              Câu hỏi phỏng vấn AI cho: {selectedJob?.title}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  Câu hỏi phỏng vấn AI
+                </DialogTitle>
+                {selectedJob && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {selectedJob.title} • {selectedJob.department} • {selectedJob.level}
+                  </p>
+                )}
+              </div>
+              
+              {/* Language selector - only show before generating */}
+              {!generatingQuestions && !aiQuestions && (
+                <Select 
+                  value={aiQuestionLanguage} 
+                  onValueChange={(val) => setAiQuestionLanguage(val as 'vietnamese' | 'english')}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-50">
+                    <SelectItem value="vietnamese">Tiếng Việt</SelectItem>
+                    <SelectItem value="english">English</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            
+            {selectedJob && !generatingQuestions && (
+              <div className="flex gap-2 mt-3">
+                <Badge variant="outline" className="text-xs">
+                  {selectedJob.department}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {selectedJob.level}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {selectedJob.job_type || 'Full-time'}
+                </Badge>
+              </div>
+            )}
           </DialogHeader>
           
-          <div className="space-y-4">
+          <div className="space-y-4 mt-4">
             {generatingQuestions ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-gray-600">Đang tạo câu hỏi với AI...</p>
-              </div>
-            ) : (
-              <>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <pre className="whitespace-pre-wrap text-sm">{aiQuestions}</pre>
+              // Loading State
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="relative">
+                  <div className="w-16 h-16 border-4 border-purple-200 rounded-full" />
+                  <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0" />
                 </div>
-                <div className="flex gap-3">
+                <p className="text-gray-600 mt-6 font-medium">Đang tạo câu hỏi với AI...</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  AI đang phân tích JD và tạo câu hỏi phù hợp
+                </p>
+                <div className="flex gap-2 mt-4">
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            ) : aiQuestions ? (
+              // Questions Display State
+              <>
+                {/* Info banner */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-purple-900">
+                        Câu hỏi được tạo tự động bởi AI
+                      </p>
+                      <p className="text-xs text-purple-700 mt-1">
+                        Vui lòng xem xét và điều chỉnh cho phù hợp với nhu cầu thực tế của công ty. 
+                        Các câu hỏi này chỉ mang tính tham khảo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Questions display with markdown formatting */}
+                <div className="border rounded-lg bg-white overflow-hidden">
+                  <div className="p-6 max-h-[500px] overflow-y-auto">
+                    <div className="prose prose-sm max-w-none">
+                      {aiQuestions.split('\n').map((line, index) => {
+                        // Heading 1
+                        if (line.startsWith('# ')) {
+                          return (
+                            <h1 key={index} className="text-2xl font-bold mt-6 mb-4 text-gray-900 first:mt-0">
+                              {line.replace('# ', '')}
+                            </h1>
+                          );
+                        }
+                        // Heading 2
+                        if (line.startsWith('## ')) {
+                          return (
+                            <h2 key={index} className="text-lg font-bold mt-6 mb-3 text-gray-900 flex items-center gap-2">
+                              {line.replace('## ', '')}
+                            </h2>
+                          );
+                        }
+                        // Heading 3
+                        if (line.startsWith('### ')) {
+                          return (
+                            <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-gray-800">
+                              {line.replace('### ', '')}
+                            </h3>
+                          );
+                        }
+                        // List items
+                        if (line.trim().startsWith('- ')) {
+                          return (
+                            <li key={index} className="ml-6 mb-2 text-gray-700">
+                              {line.trim().replace('- ', '')}
+                            </li>
+                          );
+                        }
+                        // Numbered list
+                        if (/^\d+\.\s/.test(line.trim())) {
+                          return (
+                            <li key={index} className="ml-6 mb-2 text-gray-700 list-decimal">
+                              {line.trim().replace(/^\d+\.\s/, '')}
+                            </li>
+                          );
+                        }
+                        // Empty line
+                        if (line.trim() === '') {
+                          return <div key={index} className="h-2" />;
+                        }
+                        // Regular paragraph
+                        return (
+                          <p key={index} className="mb-2 text-gray-700">
+                            {line}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-4 border-t">
                   <Button
                     variant="outline"
                     className="flex-1"
@@ -1460,12 +1580,33 @@ export function JobsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setIsAIQuestionsDialogOpen(false)}
+                    onClick={() => {
+                      setAiQuestions('');
+                      if (selectedJob) {
+                        handleGenerateAIQuestions(selectedJob);
+                      }
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Tạo lại
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsAIQuestionsDialogOpen(false);
+                      setAiQuestions('');
+                    }}
                   >
                     Đóng
                   </Button>
                 </div>
               </>
+            ) : (
+              // No questions state
+              <div className="text-center py-12 text-gray-500">
+                <Sparkles className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <p className="text-sm">Không có câu hỏi nào được tạo</p>
+              </div>
             )}
           </div>
         </DialogContent>
