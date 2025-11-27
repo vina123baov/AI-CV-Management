@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+// ✅ Dùng react-router-dom cho Vite
+import { useNavigate } from "react-router-dom"
 import {
   RefreshCw,
   Brain,
@@ -13,8 +15,7 @@ import {
   Sparkles,
   Briefcase,
   RotateCcw,
-  TrendingUp,
-  Filter,
+  Calendar, // ✅ Đã import icon Calendar
 } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
@@ -43,7 +44,7 @@ const Progress = ({ value, className = "" }: { value: number; className?: string
   );
 };
 
-// ==================== OPENROUTER GPT-4O SERVICE - ✅ GỌI BACKEND ====================
+// ==================== OPENROUTER GPT-4O SERVICE ====================
 interface JobMatchResult {
   job_id: string
   job_title: string
@@ -103,8 +104,6 @@ async function analyzeWithGPT4o(
       }),
     });
 
-    console.log('📥 Backend response status:', response.status);
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('❌ Backend error:', errorData);
@@ -144,6 +143,8 @@ const getScoreBg = (score: number) => {
 // ==================== MAIN COMPONENT ====================
 export default function PotentialCandidatesPage() {
   const { toast } = useToast()
+  // ✅ Khởi tạo hook navigate
+  const navigate = useNavigate()
   
   const [loading, setLoading] = React.useState(true)
   const [analyzing, setAnalyzing] = React.useState(false)
@@ -151,7 +152,6 @@ export default function PotentialCandidatesPage() {
   const [candidates, setCandidates] = React.useState<any[]>([])
   const [jobs, setJobs] = React.useState<any[]>([])
   const [selectedJob, setSelectedJob] = React.useState<string>("all")
-  const [matchFilter, setMatchFilter] = React.useState<string>("all") // ✅ NEW: Match filter
   const [showDetail, setShowDetail] = React.useState(false)
   const [selectedCandidate, setSelectedCandidate] = React.useState<any>(null)
 
@@ -201,26 +201,11 @@ export default function PotentialCandidatesPage() {
 
       if (candidatesError) throw candidatesError
 
-      console.log('📊 Total candidates from DB:', candidatesData?.length || 0);
-
-      const parsedCandidates = (candidatesData || []).map((c: any) => {
-        const analysisResult = c.cv_parsed_data?.analysis_result || null;
-
-        // Find the score for the applied job position, not the best match
-        let appliedJobScore = 0;
-        if (analysisResult?.all_matches && c.job_id) {
-          const appliedJobMatch = analysisResult.all_matches.find(
-            (match: any) => match.job_id === c.job_id
-          );
-          appliedJobScore = appliedJobMatch?.match_score || 0;
-        }
-
-        return {
-          ...c,
-          analysis_result: analysisResult,
-          overall_score: appliedJobScore,
-        };
-      })
+      const parsedCandidates = (candidatesData || []).map((c: any) => ({
+        ...c,
+        analysis_result: c.cv_parsed_data?.analysis_result || null,
+        overall_score: c.cv_parsed_data?.analysis_result?.overall_score || 0,
+      }))
 
       setCandidates(parsedCandidates)
 
@@ -280,9 +265,15 @@ export default function PotentialCandidatesPage() {
             analysis_result: analysisResult,
           }
 
+          // ✅ Tự động chuyển sang "Sàng lọc" nếu đang là "Mới"
+          const newStatus = candidate.status === 'Mới' ? 'Sàng lọc' : candidate.status;
+
           const { error } = await supabase
             .from("cv_candidates")
-            .update({ cv_parsed_data: updatedParsedData })
+            .update({ 
+              cv_parsed_data: updatedParsedData,
+              status: newStatus 
+            })
             .eq("id", candidate.id)
 
           if (error) throw error
@@ -295,7 +286,7 @@ export default function PotentialCandidatesPage() {
 
       toast({
         title: "Hoàn thành",
-        description: `Phân tích thành công ${successCount}/${candidatesToAnalyze.length} CV`,
+        description: `Phân tích thành công ${successCount}/${candidatesToAnalyze.length} CV. Các ứng viên đã được chuyển sang trạng thái "Sàng lọc".`,
         duration: 3000,
       })
 
@@ -349,16 +340,24 @@ export default function PotentialCandidatesPage() {
         analysis_result: analysisResult,
       }
 
+      // ✅ Tự động chuyển sang "Sàng lọc" nếu đang là "Mới"
+      const newStatus = candidate.status === 'Mới' ? 'Sàng lọc' : candidate.status;
+
       const { error } = await supabase
         .from("cv_candidates")
-        .update({ cv_parsed_data: updatedParsedData })
+        .update({ 
+          cv_parsed_data: updatedParsedData,
+          status: newStatus 
+        })
         .eq("id", candidate.id)
 
       if (error) throw error
 
       toast({
         title: "Thành công",
-        description: "Phân tích CV hoàn tất",
+        description: newStatus === 'Sàng lọc' 
+          ? "Phân tích CV hoàn tất. Ứng viên đã được chuyển sang trạng thái 'Sàng lọc'."
+          : "Phân tích CV hoàn tất.",
         duration: 3000,
       })
 
@@ -414,9 +413,15 @@ export default function PotentialCandidatesPage() {
         analysis_result: analysisResult,
       }
 
+      // ✅ Nếu phân tích lại, cũng kiểm tra trạng thái "Mới" để chuyển
+      const newStatus = candidate.status === 'Mới' ? 'Sàng lọc' : candidate.status;
+
       const { error } = await supabase
         .from("cv_candidates")
-        .update({ cv_parsed_data: updatedParsedData })
+        .update({ 
+          cv_parsed_data: updatedParsedData,
+          status: newStatus
+        })
         .eq("id", candidate.id)
 
       if (error) throw error
@@ -446,35 +451,23 @@ export default function PotentialCandidatesPage() {
     setShowDetail(true)
   }
 
-  // ✅ IMPROVED: Filtered candidates với match filter
+  // ✅ Hàm chuyển hướng đến trang phỏng vấn sử dụng navigate
+  const handleCreateInterview = (candidate: any) => {
+  navigate(`/phong-van?create=true&candidateId=${candidate.id}`);
+  };
+
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((c) => {
-      // Job filter
       if (selectedJob !== "all" && c.job_id !== selectedJob) return false
-      
-      // Match filter
-      if (matchFilter === "perfect") {
-        return c.analysis_result?.best_match?.job_id === c.cv_jobs?.id
-      }
-      if (matchFilter === "mismatch") {
-        return c.analysis_result && c.analysis_result.best_match?.job_id !== c.cv_jobs?.id
-      }
-      if (matchFilter === "not-analyzed") {
-        return !c.analysis_result
-      }
-      
       return true
     })
-  }, [candidates, selectedJob, matchFilter])
+  }, [candidates, selectedJob])
 
-  // ✅ IMPROVED: Stats với matching quality
+  // Stats
   const stats = React.useMemo(() => {
     const total = filteredCandidates.length
     const analyzed = filteredCandidates.filter((c) => c.analysis_result).length
     const excellent = filteredCandidates.filter((c) => c.overall_score >= 85).length
-    const perfectMatch = filteredCandidates.filter(
-      (c) => c.analysis_result?.best_match?.job_id === c.cv_jobs?.id
-    ).length
     const avgScore = analyzed > 0
       ? Math.round(
           filteredCandidates
@@ -482,9 +475,8 @@ export default function PotentialCandidatesPage() {
             .reduce((sum, c) => sum + c.overall_score, 0) / analyzed
         )
       : 0
-    const perfectMatchRate = analyzed > 0 ? Math.round((perfectMatch / analyzed) * 100) : 0
 
-    return { total, analyzed, excellent, avgScore, perfectMatch, perfectMatchRate }
+    return { total, analyzed, excellent, avgScore }
   }, [filteredCandidates])
 
   if (loading) {
@@ -522,8 +514,7 @@ export default function PotentialCandidatesPage() {
         </div>
       </div>
 
-      {/* ✅ IMPROVED: Stats grid với Perfect Match Rate */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-2 border-blue-100">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
@@ -561,82 +552,36 @@ export default function PotentialCandidatesPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
               Xuất sắc (≥85)
-              <div className="text-xs text-gray-500 font-normal mt-1">
-                Theo vị trí đã apply
-              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-purple-600">{stats.excellent}</div>
           </CardContent>
         </Card>
-
-        {/* ✅ NEW: Perfect Match Rate Card */}
-        <Card className="border-2 border-indigo-100">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-1">
-              <Target className="h-4 w-4" />
-              Apply đúng vị trí
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2">
-              <div className="text-3xl font-bold text-indigo-600">
-                {stats.perfectMatchRate}%
-              </div>
-              <div className="text-sm text-gray-500">
-                ({stats.perfectMatch}/{stats.analyzed})
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* ✅ IMPROVED: Filters với Match Filter */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                <Briefcase className="h-4 w-4" />
-                Lọc theo vị trí
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                value={selectedJob}
-                onChange={(e) => setSelectedJob(e.target.value)}
-              >
-                <option value="all">Tất cả vị trí</option>
-                {jobs.map((job) => (
-                  <option key={job.id} value={job.id}>
-                    {job.title} - {job.level}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* ✅ NEW: Match Filter */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                Lọc theo độ phù hợp
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                value={matchFilter}
-                onChange={(e) => setMatchFilter(e.target.value)}
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="perfect">✅ Apply đúng vị trí phù hợp nhất</option>
-                <option value="mismatch">⚠️ Nên chuyển vị trí khác</option>
-                <option value="not-analyzed">⏳ Chưa phân tích</option>
-              </select>
-            </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Lọc theo vị trí
+            </label>
+            <select
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              value={selectedJob}
+              onChange={(e) => setSelectedJob(e.target.value)}
+            >
+              <option value="all">Tất cả vị trí</option>
+              {jobs.map((job) => (
+                <option key={job.id} value={job.id}>
+                  {job.title} - {job.level}
+                </option>
+              ))}
+            </select>
           </div>
         </CardContent>
       </Card>
 
-      {/* ✅ IMPROVED: Candidate Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredCandidates.map((candidate) => (
           <Card
@@ -657,6 +602,9 @@ export default function PotentialCandidatesPage() {
                       {candidate.cv_jobs.title}
                     </Badge>
                   )}
+                  {candidate.status === 'Sàng lọc' && (
+                     <Badge className="ml-2 bg-yellow-100 text-yellow-700 border-yellow-200 text-xs">Sàng lọc</Badge>
+                  )}
                 </div>
                 {candidate.analysis_result && (
                   <div className={`text-2xl font-bold ${getScoreColor(candidate.overall_score)}`}>
@@ -665,62 +613,25 @@ export default function PotentialCandidatesPage() {
                 )}
               </div>
 
-              {/* ✅ IMPROVED: Best Match Display */}
               {candidate.analysis_result?.best_match && (
-                <div className={`rounded-lg p-3 mb-4 border-2 ${
-                  candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id
-                    ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-300'
-                    : 'bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-300'
-                }`}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      {candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id ? (
-                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-                      )}
-                      <p className="text-xs font-semibold text-gray-700">
-                        {candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id
-                          ? 'Vị trí phù hợp nhất'
-                          : 'Gợi ý vị trí phù hợp hơn'}
-                      </p>
-                    </div>
-                    <Badge className={`text-xs font-bold ${
-                      candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id
-                        ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                        : 'bg-amber-100 text-amber-700 border-amber-300'
-                    }`}>
-                      {candidate.analysis_result.best_match.match_score}%
-                    </Badge>
-                  </div>
-                  
-                  <p className="text-sm font-semibold text-gray-900 mb-2">
+                <div className="bg-white/50 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-gray-600 mb-1">Best match:</p>
+                  <p className="text-sm font-medium text-gray-900">
                     {candidate.analysis_result.best_match.job_title}
                   </p>
-                  
-                  {candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id ? (
-                    <div className="bg-white/60 rounded px-2 py-1.5">
-                      <p className="text-xs text-emerald-700 font-medium">
-                        ✅ Ứng viên đã apply đúng vị trí
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <div className="bg-white/60 rounded px-2 py-1">
-                        <p className="text-xs text-gray-600">
-                          Đã apply: <span className="font-medium text-gray-800">{candidate.cv_jobs?.title}</span>
-                        </p>
-                      </div>
-                      <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3" />
-                        Nên xem xét chuyển vị trí
-                      </p>
-                    </div>
-                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {candidate.cv_jobs?.id === candidate.analysis_result.best_match.job_id
+                      ? "✅ Đây là vị trí phù hợp nhất"
+                      : "💡 Gợi ý vị trí phù hợp nhất"}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge className="bg-emerald-100 text-emerald-700 text-xs">
+                      {candidate.analysis_result.best_match.match_score}% match
+                    </Badge>
+                  </div>
                 </div>
               )}
 
-              {/* Buttons section */}
               <div className="flex flex-col gap-2">
                 {!candidate.analysis_result ? (
                   <Button
@@ -763,6 +674,17 @@ export default function PotentialCandidatesPage() {
                         </>
                       )}
                     </Button>
+
+                    {/* ✅ Button Tạo lịch phỏng vấn */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCreateInterview(candidate)}
+                      className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
+                    >
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Tạo lịch phỏng vấn
+                    </Button>
                   </>
                 )}
               </div>
@@ -785,7 +707,6 @@ export default function PotentialCandidatesPage() {
         </Card>
       )}
 
-      {/* ✅ IMPROVED: Detail Dialog */}
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -805,18 +726,12 @@ export default function PotentialCandidatesPage() {
 
           {selectedCandidate && (
             <div className="p-6 space-y-6">
-              {/* Overall Score - Applied Job Position */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-xl border border-blue-200">
                 <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h4 className="font-semibold text-blue-900 flex items-center gap-2">
-                      <Target className="h-5 w-5" />
-                      Điểm phù hợp vị trí đã apply
-                    </h4>
-                    <p className="text-sm text-blue-700 mt-1">
-                      {selectedCandidate?.cv_jobs?.title}
-                    </p>
-                  </div>
+                  <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Điểm tổng thể
+                  </h4>
                   <span className={`text-2xl font-bold ${getScoreColor(selectedCandidate.overall_score || 0)}`}>
                     {selectedCandidate.overall_score || 0}/100
                   </span>
@@ -824,101 +739,39 @@ export default function PotentialCandidatesPage() {
                 <Progress value={selectedCandidate.overall_score || 0} className="h-3" />
               </div>
 
-              {/* ✅ IMPROVED: Best Match Section */}
               {selectedCandidate.analysis_result?.best_match && (
-                <div className={`rounded-xl p-5 border-2 ${
-                  selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id
-                    ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-300'
-                    : 'bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-300'
-                }`}>
-                  <div className="flex items-center gap-2 mb-4">
-                    {selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id ? (
-                      <CheckCircle className="h-6 w-6 text-emerald-600" />
-                    ) : (
-                      <AlertCircle className="h-6 w-6 text-amber-600" />
-                    )}
-                    <h4 className={`font-semibold text-lg ${
-                      selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id
-                        ? 'text-emerald-900'
-                        : 'text-amber-900'
-                    }`}>
-                      {selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id
-                        ? 'Vị trí Apply là phù hợp nhất'
-                        : 'Gợi ý vị trí phù hợp hơn'}
-                    </h4>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-white/70 rounded-lg">
-                      <div className="flex-1">
-                        <p className="text-sm text-gray-600 mb-1">Vị trí phù hợp nhất:</p>
-                        <p className="font-semibold text-lg text-gray-900">
-                          {selectedCandidate.analysis_result.best_match.job_title}
-                        </p>
-                      </div>
-                      <Badge className={`text-base font-bold px-3 py-1 ${
-                        selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id
-                          ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                          : 'bg-amber-100 text-amber-700 border-amber-300'
-                      }`}>
-                        {selectedCandidate.analysis_result.best_match.match_score}%
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-5 rounded-xl border border-emerald-200">
+                  <h4 className="font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+                    <Briefcase className="h-5 w-5" />
+                    Công việc phù hợp nhất
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-lg text-emerald-900">
+                        {selectedCandidate.analysis_result.best_match.job_title}
+                      </p>
+                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300">
+                        {selectedCandidate.analysis_result.best_match.match_score}% match
                       </Badge>
                     </div>
-                    
-                    {selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id ? (
-                      <div className="bg-emerald-100/50 rounded-lg p-4 border border-emerald-200">
-                        <p className="text-sm text-emerald-800 font-medium flex items-center gap-2">
-                          <CheckCircle className="h-5 w-5" />
-                          Ứng viên đã apply đúng vị trí có độ phù hợp cao nhất trong hệ thống
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="bg-white/70 rounded-lg p-3 border border-gray-200">
-                          <p className="text-xs text-gray-600 mb-1">Vị trí đã apply:</p>
-                          <div className="flex items-center justify-between">
-                            <p className="font-medium text-gray-900">{selectedCandidate.cv_jobs?.title}</p>
-                            {(() => {
-                              const appliedJobMatch = selectedCandidate.analysis_result.all_matches?.find(
-                                (m: any) => m.job_id === selectedCandidate.cv_jobs?.id
-                              );
-                              return appliedJobMatch ? (
-                                <Badge variant="outline" className="text-xs">
-                                  {appliedJobMatch.match_score}% match
-                                </Badge>
-                              ) : null;
-                            })()}
-                          </div>
-                        </div>
-                        
-                        <div className="bg-amber-100/50 rounded-lg p-4 border border-amber-200">
-                          <p className="text-sm text-amber-800 font-medium flex items-center gap-2 mb-2">
-                            <Sparkles className="h-5 w-5" />
-                            Khuyến nghị
-                          </p>
-                          <p className="text-sm text-amber-700">
-                            Xem xét chuyển ứng viên sang vị trí <span className="font-semibold">{selectedCandidate.analysis_result.best_match.job_title}</span> để tận dụng tốt hơn năng lực và kinh nghiệm của họ.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="bg-white/70 rounded-lg p-4">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        {selectedCandidate.analysis_result.best_match.recommendation}
-                      </p>
-                    </div>
+                    <p className="text-sm text-emerald-600">
+                      {selectedCandidate.cv_jobs?.id === selectedCandidate.analysis_result.best_match.job_id
+                        ? "✅ Đây là vị trí phù hợp nhất"
+                        : "💡 Gợi ý vị trí phù hợp nhất"}
+                    </p>
+                    <p className="text-sm text-emerald-800">
+                      {selectedCandidate.analysis_result.best_match.recommendation}
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* Tabs: Strengths, Weaknesses, Other Matches */}
               {selectedCandidate.analysis_result?.all_matches && (
                 <Tabs defaultValue="strengths" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="strengths">Điểm mạnh</TabsTrigger>
                     <TabsTrigger value="weaknesses">Điểm yếu</TabsTrigger>
-                    <TabsTrigger value="matches">Gợi ý khác</TabsTrigger>
+                    <TabsTrigger value="matches">Gợi ý Matches khác</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="strengths" className="space-y-3">
@@ -1029,9 +882,7 @@ export default function PotentialCandidatesPage() {
                             </>
                           ) : (
                             <div className="text-center py-8">
-                              <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-3" />
-                              <p className="text-gray-600 font-medium">Không có gợi ý vị trí nào khác phù hợp hơn</p>
-                              <p className="text-sm text-gray-500 mt-1">Vị trí hiện tại là lựa chọn tốt nhất</p>
+                              <p className="text-gray-500">Không có gợi ý vị trí nào khác phù hợp hơn</p>
                             </div>
                           );
                         })()}
@@ -1045,7 +896,6 @@ export default function PotentialCandidatesPage() {
                 </Tabs>
               )}
 
-              {/* Personal Info */}
               <div className="grid grid-cols-2 gap-4 p-5 bg-gray-50 rounded-xl border border-gray-200">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Trường</p>
@@ -1065,7 +915,6 @@ export default function PotentialCandidatesPage() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <Button variant="outline" onClick={() => setShowDetail(false)}>
                   Đóng

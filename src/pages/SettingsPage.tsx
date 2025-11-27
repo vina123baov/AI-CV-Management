@@ -1,4 +1,4 @@
-// src/pages/SettingsPage.tsx
+// src/pages/SettingsPage.tsx - FIXED VERSION
 "use client"
 
 import { useState, useEffect } from "react"
@@ -10,9 +10,9 @@ import { supabase } from "@/lib/supabaseClient"
 import { NotificationSettings } from "@/components/settings/NotificationSettings"
 import { EmailSettings } from "@/components/settings/EmailSettings"
 import { useTranslation } from 'react-i18next'
-import CategorySettingsPage from "@/components/settings/CategorySettings"
 import UsersPage from "@/pages/User"
-import Authorization from "@/pages/Authorization"
+// ❌ REMOVED: import Authorization from "@/pages/Authorization"
+// ✅ USE: Permissions accessible via /phan-quyen route (defined in App.tsx)
 import { toast } from "sonner"
 
 interface CompanyProfile {
@@ -30,15 +30,18 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<CompanyProfile>({});
   const [loading, setLoading] = useState(true);
 
-  // Định nghĩa tabs với translation
+  // ========================================
+  // TABS CONFIGURATION
+  // ========================================
+  // NOTE: "permissions" tab removed from here
+  // Access permissions via dedicated route: /phan-quyen
   const tabs = [
     { id: "company", label: t('settings.tabs.company'), icon: Building2 },
     { id: "ai", label: t('settings.tabs.ai'), icon: Bot },
     { id: "email", label: t('settings.tabs.email'), icon: Mail },
     { id: "notifications", label: t('settings.tabs.notifications'), icon: Bell },
-    { id: "category", label: t('settings.tabs.categories'), icon: FolderTree },
-    { id: "users", label: t('settings.tabs.users'), icon: Users },
-    { id: "permissions", label: t('settings.tabs.permissions'), icon: Shield },
+    // ❌ REMOVED: permissions tab
+    // Permissions now has its own dedicated page at /phan-quyen
   ];
 
   useEffect(() => {
@@ -147,6 +150,7 @@ export default function SettingsPage() {
           <p className="text-muted-foreground">{t('settings.subtitle')}</p>
         </div>
 
+        {/* Tabs Navigation */}
         <div className="flex gap-1 sm:gap-2 overflow-x-auto border-b">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -166,6 +170,7 @@ export default function SettingsPage() {
           })}
         </div>
 
+        {/* Tab Content */}
         <div>
           {activeTab === "company" && (
             <CompanySettings profile={profile} handleInputChange={handleInputChange} />
@@ -183,8 +188,7 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
-
-          {activeTab === "category" && <CategorySettingsPage />}
+         
 
           {activeTab === "users" && (
             <div className="pt-6">
@@ -192,13 +196,15 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeTab === "permissions" && (
-            <div className="pt-6">
-              <Authorization />
-            </div>
-          )}
+          {/* ❌ REMOVED: Permissions tab content */}
+          {/* Permissions now accessible via:
+              - Sidebar: "Phân quyền" menu item (requires permissions.view)
+              - Direct URL: /phan-quyen
+              - Uses: PermissionsPage.tsx component
+          */}
         </div>
 
+        {/* Save Button (only for company tab) */}
         {activeTab === "company" && (
           <div className="flex justify-end gap-3 pt-4">
             <Button 

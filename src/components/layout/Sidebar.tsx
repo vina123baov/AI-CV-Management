@@ -1,4 +1,4 @@
-// src/components/layout/Sidebar.tsx
+// src/components/layout/Sidebar.tsx - FIXED VERSION
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -12,10 +12,15 @@ import {
   Building2,
   FileText,
   Filter,
+  Shield,
+  UserCog,
+  Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { supabase } from "@/lib/supabaseClient";
 import { useTranslation } from 'react-i18next';
+import { usePermissions } from "@/contexts/PermissionsContext";
 
 // Fixed UUID cho company profile (chung cho toàn hệ thống)
 const COMPANY_PROFILE_ID = '00000000-0000-0000-0000-000000000001';
@@ -25,21 +30,34 @@ interface NavItemProps {
   icon: React.ElementType;
   label: string;
   isActive: boolean;
+  badge?: string;
 }
 
-const NavItem = ({ to, icon: Icon, label, isActive }: NavItemProps) => (
+const NavItem = ({ to, icon: Icon, label, isActive, badge }: NavItemProps) => (
   <Link
     to={to}
-    className={`flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+    className={`flex items-center justify-between px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
       isActive
         ? "bg-white text-primary shadow-md font-semibold"
         : "text-white/90 hover:bg-white/15 hover:text-white hover:translate-x-1"
     }`}
     aria-current={isActive ? 'page' : undefined}
   >
-    <Icon className="w-5 h-5 mr-3" />
-    <span className="truncate">{label}</span>
+    <div className="flex items-center">
+      <Icon className="w-5 h-5 mr-3" />
+      <span className="truncate">{label}</span>
+    </div>
+    {badge && (
+      <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-red-500 text-white">
+        {badge}
+      </span>
+    )}
   </Link>
+);
+
+// Skeleton cho nav items khi đang loading
+const NavItemSkeleton = () => (
+  <div className="h-10 bg-white/10 rounded-lg animate-pulse" />
 );
 
 // Component hiển thị Logo công ty - Load từ Supabase
@@ -101,7 +119,9 @@ function CompanyLogo({ companyName }: { companyName: string }) {
 
     // Listen for custom event (same-tab updates from Settings)
     const handleLogoUpdate = () => {
-      console.log('🔄 Logo update event received, reloading...');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Logo update event received, reloading...');
+      }
       loadLogoFromSupabase();
     };
 
@@ -117,7 +137,9 @@ function CompanyLogo({ companyName }: { companyName: string }) {
           filter: `id=eq.${COMPANY_PROFILE_ID}`
         },
         (payload) => {
-          console.log('📡 Realtime update received:', payload);
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📡 Realtime update received:', payload);
+          }
           if (payload.new && (payload.new as any).logo_url !== undefined) {
             const newLogo = (payload.new as any).logo_url;
             setLogo(newLogo);
@@ -130,7 +152,9 @@ function CompanyLogo({ companyName }: { companyName: string }) {
         }
       )
       .subscribe((status) => {
-        console.log('📡 Realtime subscription status:', status);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📡 Realtime subscription status:', status);
+        }
       });
 
     window.addEventListener('storage', handleStorageChange);
@@ -198,17 +222,89 @@ function CompanyLogo({ companyName }: { companyName: string }) {
 export function Sidebar() {
   const location = useLocation();
   const { t } = useTranslation();
+  const { canView, loading: permLoading, error: permError } = usePermissions();
   const [companyName, setCompanyName] = useState('Recruit AI');
   const [loading, setLoading] = useState(true);
 
-  const navItems: Array<{ to: string; label: string; icon: React.ElementType }> = [
-    { to: "/", label: t('nav.dashboard'), icon: LayoutDashboard },
-    { to: "/mo-ta-cong-viec", label: t('nav.jobs'), icon: Briefcase },
-    { to: "/ung-vien", label: t('nav.candidates'), icon: Users },
-    { to: "/phong-van", label: t('nav.interviews'), icon: Calendar },
-    { to: "/danh-gia", label: t('nav.reviews'), icon: Star },
-    { to: "/quan-ly-email", label: t('nav.email'), icon: Mail },
-    { to: "/cai-dat", label: t('nav.settings'), icon: Settings },
+  // ========================================
+  // PERMISSION-BASED NAVIGATION ITEMS
+  // ========================================
+  // NOTE: Quyền được kiểm soát hoàn toàn bởi database
+  // Không hardcode roles ở đây
+  const navItems = [
+    ...(canView('dashboard') ? [{
+      to: "/",
+      label: t('nav.dashboard'),
+      icon: LayoutDashboard
+    }] : []),
+    
+    ...(canView('jobs') ? [{
+      to: "/mo-ta-cong-viec",
+      label: t('nav.jobs'),
+      icon: Briefcase
+    }] : []),
+    
+    ...(canView('candidates') ? [{
+      to: "/ung-vien",
+      label: t('nav.candidates'),
+      icon: Users
+    }] : []),
+    
+    ...(canView('interviews') ? [{
+      to: "/phong-van",
+      label: t('nav.interviews'),
+      icon: Calendar
+    }] : []),
+    
+    ...(canView('reviews') ? [{
+      to: "/danh-gia",
+      label: t('nav.reviews'),
+      icon: Star
+    }] : []),
+    
+    ...(canView('cv_filter') ? [{
+      to: "/loc-cv",
+      label: "Lọc CV",
+      icon: Filter
+    }] : []),
+    
+    //...(canView('offers') ? [{
+    //  to: "/offers",
+    //  label: "Offer Management",
+    //  icon: FileText
+    //}] : []),
+    
+    ...(canView('email') ? [{
+      to: "/quan-ly-email",
+      label: t('nav.email'),
+      icon: Mail
+    }] : []),
+    
+    ...(canView('users') ? [{
+      to: "/nguoi-dung",
+      label: "Người dùng",
+      icon: UserCog
+    }] : []),
+    
+    //...(canView('ai_tools') ? [{
+    //  to: "/ai",
+    //  label: "AI Tools",
+    //  icon: Sparkles,
+    //  badge: "NEW"
+    //}] : []),
+    
+    ...(canView('permissions') ? [{
+      to: "/phan-quyen",
+      label: "Phân quyền",
+      icon: Shield,
+      badge: "ADMIN"
+    }] : []),
+    
+    ...(canView('settings') ? [{
+      to: "/cai-dat",
+      label: t('nav.settings'),
+      icon: Settings
+    }] : []),
   ];
 
   useEffect(() => {
@@ -258,6 +354,9 @@ export function Sidebar() {
     };
   }, []);
 
+  // ========================================
+  // RENDER SIDEBAR
+  // ========================================
   return (
     <aside 
       className="w-64 h-screen bg-gradient-to-b from-primary to-primary/90 shadow-xl flex flex-col p-4 fixed"
@@ -282,39 +381,56 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Navigation */}
+      {/* Navigation - Permission-Based */}
       <nav className="flex-1 space-y-1.5 overflow-y-auto scrollbar-thin">
-        {navItems.map((item) => {
-          const active = location.pathname === item.to;
-          return (
-            <NavItem
-              key={item.to}
-              to={item.to}
-              icon={item.icon}
-              label={item.label}
-              isActive={active}
-            />
-          );
-        })}
-
-        {/* CV Filter Link */}
-        <NavItem
-          to="/loc-cv"
-          icon={Filter}
-          label="Lọc CV"
-          isActive={location.pathname === '/loc-cv'}
-        />
-
-        {/* Extra tools */}
-        <NavItem
-          to="/offers"
-          icon={FileText}
-          label="Offer Management"
-          isActive={location.pathname === '/offers'}
-        />
+        {permLoading ? (
+          // ✅ Show skeleton while loading permissions
+          <>
+            {[...Array(6)].map((_, i) => (
+              <NavItemSkeleton key={i} />
+            ))}
+          </>
+        ) : permError ? (
+          // ✅ Show error if permissions failed to load
+          <div className="text-center py-8 px-4">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-red-400" />
+            <p className="text-white/70 text-sm mb-2">
+              Lỗi tải quyền
+            </p>
+            <p className="text-white/50 text-xs">
+              {permError}
+            </p>
+          </div>
+        ) : navItems.length === 0 ? (
+          // ✅ Show message if no permissions
+          <div className="text-center py-8 px-4">
+            <Shield className="w-12 h-12 mx-auto mb-3 text-white/40" />
+            <p className="text-white/70 text-sm mb-2">
+              Không có quyền truy cập
+            </p>
+            <p className="text-white/50 text-xs">
+              Liên hệ Admin để được cấp quyền
+            </p>
+          </div>
+        ) : (
+          // ✅ Show actual nav items
+          navItems.map((item) => {
+            const active = location.pathname === item.to;
+            return (
+              <NavItem
+                key={item.to}
+                to={item.to}
+                icon={item.icon}
+                label={item.label}
+                isActive={active}
+                badge={(item as any).badge}
+              />
+            );
+          })
+        )}
       </nav>
 
-      {/* User Profile Section - UPDATED TO SHOW AVATAR */}
+      {/* User Profile Section */}
       <div className="mt-auto pt-4 border-t border-white/20">
         <UserMenu />
       </div>
