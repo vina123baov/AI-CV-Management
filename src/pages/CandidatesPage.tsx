@@ -398,7 +398,7 @@ export function CandidatesPage() {
     setParsedData(null);
   };
 
-  // ✅ CẬP NHẬT: handleSubmit - Thêm logging
+  // ✅ CẬP NHẬT: handleSubmit - Thêm logging và RÀNG BUỘC TRẠNG THÁI "MỚI"
   const handleSubmit = async () => {
     if (!formData.full_name || !formData.email || !formData.job_id) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc (Họ tên, Email, Vị trí ứng tuyển)');
@@ -442,7 +442,7 @@ export function CandidatesPage() {
           experience: formData.experience || null,
           education: formData.education || null,
           university: formData.university || null,
-          status: formData.status,
+          status: 'Mới', // 🔒 LUÔN LUÔN LÀ "MỚI" KHI TẠO
           source: formData.source || null,
           cv_url: cvUrl,
           cv_file_name: cvFileName,
@@ -514,7 +514,7 @@ export function CandidatesPage() {
           experience: formData.experience || null,
           education: formData.education || null,
           university: formData.university || null,
-          status: formData.status,
+          // status: formData.status, // ⚠️ ĐÃ LOẠI BỎ CẬP NHẬT STATUS Ở ĐÂY NHƯ YÊU CẦU TRƯỚC
           source: formData.source || null,
         })
         .eq('id', editCandidate.id)
@@ -948,44 +948,25 @@ export function CandidatesPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Trạng thái</label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value) => handleInputChange('status', value)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white z-50 shadow-lg border border-gray-200">
-                        <SelectItem value="Mới">Mới</SelectItem>
-                        <SelectItem value="Sàng lọc">Sàng lọc</SelectItem>
-                        <SelectItem value="Phỏng vấn">Phỏng vấn</SelectItem>
-                        <SelectItem value="Chấp nhận">Chấp nhận</SelectItem>
-                        <SelectItem value="Từ chối">Từ chối</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Nguồn ứng tuyển</label>
-                    <Select
-                      value={formData.source}
-                      onValueChange={(value) => handleInputChange('source', value)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Chọn nguồn" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white z-50 shadow-lg border border-gray-200">
-                        <SelectItem value="Website">Website</SelectItem>
-                        <SelectItem value="LinkedIn">LinkedIn</SelectItem>
-                        <SelectItem value="Facebook">Facebook</SelectItem>
-                        <SelectItem value="TopCV">TopCV</SelectItem>
-                        <SelectItem value="Giới thiệu">Giới thiệu</SelectItem>
-                        <SelectItem value="Khác">Khác</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                {/* 🔒 ĐÃ LOẠI BỎ CHỌN TRẠNG THÁI (MẶC ĐỊNH LÀ MỚI) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Nguồn ứng tuyển</label>
+                  <Select
+                    value={formData.source}
+                    onValueChange={(value) => handleInputChange('source', value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Chọn nguồn" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white z-50 shadow-lg border border-gray-200">
+                      <SelectItem value="Website">Website</SelectItem>
+                      <SelectItem value="LinkedIn">LinkedIn</SelectItem>
+                      <SelectItem value="Facebook">Facebook</SelectItem>
+                      <SelectItem value="TopCV">TopCV</SelectItem>
+                      <SelectItem value="Giới thiệu">Giới thiệu</SelectItem>
+                      <SelectItem value="Khác">Khác</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
@@ -1276,19 +1257,7 @@ export function CandidatesPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Trạng thái</label>
-                  <Select value={formData.status} onValueChange={(value) => handleInputChange('status', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-white z-50">
-                      <SelectItem value="Mới">Mới</SelectItem>
-                      <SelectItem value="Sàng lọc">Sàng lọc</SelectItem>
-                      <SelectItem value="Phỏng vấn">Phỏng vấn</SelectItem>
-                      <SelectItem value="Chấp nhận">Chấp nhận</SelectItem>
-                      <SelectItem value="Từ chối">Từ chối</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* ĐÃ XÓA PHẦN CHỌN TRẠNG THÁI Ở ĐÂY */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Nguồn</label>
                   <Select value={formData.source} onValueChange={(value) => handleInputChange('source', value)}>

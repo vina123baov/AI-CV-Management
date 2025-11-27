@@ -78,10 +78,30 @@ export function ReviewsPage() {
       .order('created_at', { ascending: false });
 
     if (data) {
-      setReviews(data as Review[]);
-      const total = data.length;
-      const sumOfRatings = data.reduce((sum, review) => sum + review.rating, 0);
-      const recommendedCount = data.filter(review => review.outcome === 'Vòng tiếp theo' || review.outcome === 'Đạt').length;
+      // Loại bỏ các đánh giá trùng lặp - chỉ giữ lại đánh giá mới nhất cho mỗi interview
+      const uniqueReviews = data.reduce((acc: Review[], review: Review) => {
+        const existingIndex = acc.findIndex((r: Review) => r.cv_interviews?.id === review.cv_interviews?.id);
+        
+        if (existingIndex === -1) {
+          // Chưa có đánh giá cho interview này, thêm vào
+          acc.push(review);
+        } else {
+          // Đã có đánh giá, so sánh thời gian và giữ lại cái mới nhất
+          const existingDate = new Date(acc[existingIndex].created_at);
+          const currentDate = new Date(review.created_at);
+          
+          if (currentDate > existingDate) {
+            acc[existingIndex] = review;
+          }
+        }
+        
+        return acc;
+      }, [] as Review[]);
+      
+      setReviews(uniqueReviews);
+      const total = uniqueReviews.length;
+      const sumOfRatings = uniqueReviews.reduce((sum: number, review: Review) => sum + review.rating, 0);
+      const recommendedCount = uniqueReviews.filter((review: Review) => review.outcome === 'Vòng tiếp theo' || review.outcome === 'Đạt').length;
       
       setStats({
         totalReviews: total,
@@ -116,17 +136,27 @@ export function ReviewsPage() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
+      // Cập nhật đánh giá với updated_at để track thời gian chỉnh sửa
+      const { data, error } = await supabase
         .from('cv_interview_reviews')
         .update({ 
           rating: newRating,
-          notes: newNote
+          notes: newNote,
+          updated_at: new Date().toISOString()
         })
-        .eq('id', selectedReview.id);
+        .eq('id', selectedReview.id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
-      // Refresh data
+      if (!data || data.length === 0) {
+        throw new Error('Không tìm thấy bản ghi để cập nhật');
+      }
+
+      // Refresh data sau khi update thành công
       await getReviews();
 
       setIsReratingDialogOpen(false);
@@ -135,9 +165,9 @@ export function ReviewsPage() {
       setNewNote('');
       
       alert('Cập nhật đánh giá thành công!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating rating:', error);
-      alert('Có lỗi xảy ra khi cập nhật đánh giá!');
+      alert(`Có lỗi xảy ra: ${error.message || 'Không thể cập nhật đánh giá'}`);
     } finally {
       setSubmitting(false);
     }

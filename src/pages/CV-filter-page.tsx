@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+// ✅ Dùng react-router-dom cho Vite
+import { useNavigate } from "react-router-dom"
 import {
   RefreshCw,
   Brain,
@@ -13,6 +15,7 @@ import {
   Sparkles,
   Briefcase,
   RotateCcw,
+  Calendar, // ✅ Đã import icon Calendar
 } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
@@ -41,7 +44,7 @@ const Progress = ({ value, className = "" }: { value: number; className?: string
   );
 };
 
-// ==================== OPENROUTER GPT-4O SERVICE - ✅ GỌI BACKEND ====================
+// ==================== OPENROUTER GPT-4O SERVICE ====================
 interface JobMatchResult {
   job_id: string
   job_title: string
@@ -95,13 +98,11 @@ async function analyzeWithGPT4o(
           description: job.description,
           requirements: job.requirements,
           benefits: job.benefits,
-          mandatory_requirements: job.mandatory_requirements || null,  // ✅ NEW
+          mandatory_requirements: job.mandatory_requirements || null,
         })),
         primary_job_id: primaryJobId,
       }),
     });
-
-    console.log('📥 Backend response status:', response.status);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -142,10 +143,12 @@ const getScoreBg = (score: number) => {
 // ==================== MAIN COMPONENT ====================
 export default function PotentialCandidatesPage() {
   const { toast } = useToast()
+  // ✅ Khởi tạo hook navigate
+  const navigate = useNavigate()
   
   const [loading, setLoading] = React.useState(true)
   const [analyzing, setAnalyzing] = React.useState(false)
-  const [reanalyzingId, setReanalyzingId] = React.useState<string | null>(null)  // ✅ NEW: Track re-analyzing
+  const [reanalyzingId, setReanalyzingId] = React.useState<string | null>(null)
   const [candidates, setCandidates] = React.useState<any[]>([])
   const [jobs, setJobs] = React.useState<any[]>([])
   const [selectedJob, setSelectedJob] = React.useState<string>("all")
@@ -197,8 +200,6 @@ export default function PotentialCandidatesPage() {
         .order("created_at", { ascending: false })
 
       if (candidatesError) throw candidatesError
-
-      console.log('📊 Total candidates from DB:', candidatesData?.length || 0);
 
       const parsedCandidates = (candidatesData || []).map((c: any) => ({
         ...c,
@@ -264,9 +265,15 @@ export default function PotentialCandidatesPage() {
             analysis_result: analysisResult,
           }
 
+          // ✅ Tự động chuyển sang "Sàng lọc" nếu đang là "Mới"
+          const newStatus = candidate.status === 'Mới' ? 'Sàng lọc' : candidate.status;
+
           const { error } = await supabase
             .from("cv_candidates")
-            .update({ cv_parsed_data: updatedParsedData })
+            .update({ 
+              cv_parsed_data: updatedParsedData,
+              status: newStatus 
+            })
             .eq("id", candidate.id)
 
           if (error) throw error
@@ -279,7 +286,7 @@ export default function PotentialCandidatesPage() {
 
       toast({
         title: "Hoàn thành",
-        description: `Phân tích thành công ${successCount}/${candidatesToAnalyze.length} CV`,
+        description: `Phân tích thành công ${successCount}/${candidatesToAnalyze.length} CV. Các ứng viên đã được chuyển sang trạng thái "Sàng lọc".`,
         duration: 3000,
       })
 
@@ -333,16 +340,24 @@ export default function PotentialCandidatesPage() {
         analysis_result: analysisResult,
       }
 
+      // ✅ Tự động chuyển sang "Sàng lọc" nếu đang là "Mới"
+      const newStatus = candidate.status === 'Mới' ? 'Sàng lọc' : candidate.status;
+
       const { error } = await supabase
         .from("cv_candidates")
-        .update({ cv_parsed_data: updatedParsedData })
+        .update({ 
+          cv_parsed_data: updatedParsedData,
+          status: newStatus 
+        })
         .eq("id", candidate.id)
 
       if (error) throw error
 
       toast({
         title: "Thành công",
-        description: "Phân tích CV hoàn tất",
+        description: newStatus === 'Sàng lọc' 
+          ? "Phân tích CV hoàn tất. Ứng viên đã được chuyển sang trạng thái 'Sàng lọc'."
+          : "Phân tích CV hoàn tất.",
         duration: 3000,
       })
 
@@ -360,7 +375,6 @@ export default function PotentialCandidatesPage() {
     }
   }
 
-  // ✅ NEW: Handle Re-analyze (phân tích lại)
   const handleReanalyze = async (candidate: any) => {
     try {
       if (!candidate.cv_parsed_data) {
@@ -399,9 +413,15 @@ export default function PotentialCandidatesPage() {
         analysis_result: analysisResult,
       }
 
+      // ✅ Nếu phân tích lại, cũng kiểm tra trạng thái "Mới" để chuyển
+      const newStatus = candidate.status === 'Mới' ? 'Sàng lọc' : candidate.status;
+
       const { error } = await supabase
         .from("cv_candidates")
-        .update({ cv_parsed_data: updatedParsedData })
+        .update({ 
+          cv_parsed_data: updatedParsedData,
+          status: newStatus
+        })
         .eq("id", candidate.id)
 
       if (error) throw error
@@ -429,6 +449,11 @@ export default function PotentialCandidatesPage() {
   const handleViewDetail = (candidate: any) => {
     setSelectedCandidate(candidate)
     setShowDetail(true)
+  }
+
+  // ✅ Hàm chuyển hướng đến trang phỏng vấn sử dụng navigate
+  const handleCreateInterview = (candidate: any) => {
+  navigate(`/phong-van?create=true&candidateId=${candidate.id}`);
   }
 
   const filteredCandidates = React.useMemo(() => {
@@ -577,6 +602,9 @@ export default function PotentialCandidatesPage() {
                       {candidate.cv_jobs.title}
                     </Badge>
                   )}
+                  {candidate.status === 'Sàng lọc' && (
+                     <Badge className="ml-2 bg-yellow-100 text-yellow-700 border-yellow-200 text-xs">Sàng lọc</Badge>
+                  )}
                 </div>
                 {candidate.analysis_result && (
                   <div className={`text-2xl font-bold ${getScoreColor(candidate.overall_score)}`}>
@@ -604,7 +632,6 @@ export default function PotentialCandidatesPage() {
                 </div>
               )}
 
-              {/* ✅ UPDATED: Buttons section với nút Phân tích lại */}
               <div className="flex flex-col gap-2">
                 {!candidate.analysis_result ? (
                   <Button
@@ -628,7 +655,6 @@ export default function PotentialCandidatesPage() {
                       Xem chi tiết
                     </Button>
                     
-                    {/* ✅ NEW: Nút Phân tích lại */}
                     <Button
                       size="sm"
                       variant="secondary"
@@ -647,6 +673,17 @@ export default function PotentialCandidatesPage() {
                           Phân tích lại
                         </>
                       )}
+                    </Button>
+
+                    {/* ✅ Button Tạo lịch phỏng vấn */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCreateInterview(candidate)}
+                      className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
+                    >
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Tạo lịch phỏng vấn
                     </Button>
                   </>
                 )}
@@ -783,7 +820,6 @@ export default function PotentialCandidatesPage() {
                     {selectedCandidate.analysis_result?.all_matches && selectedCandidate.analysis_result.all_matches.length > 0 ? (
                       <>
                         {(() => {
-                          // Lọc ra các job gợi ý khác (không phải job hiện tại) và giới hạn tối đa 3
                           const suggestedMatches = selectedCandidate.analysis_result.all_matches
                             .filter((match: JobMatchResult) => match.job_id !== selectedCandidate.cv_jobs?.id)
                             .slice(0, 3);

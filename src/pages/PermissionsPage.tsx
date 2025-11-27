@@ -480,56 +480,78 @@ export default function PermissionsPage() {
         </button>
       </div>
 
-      {/* Overview Tab */}
+      {/* Overview Tab - OPTIMIZED UI */}
       {activeTab === "overview" && (
-        <div className="px-8 py-6 space-y-6 bg-gray-50">
+        <div className="p-8 space-y-8 bg-gradient-to-br from-gray-50 to-gray-100 min-h-[calc(100vh-180px)]">
           {/* Info Banner */}
-          <Alert className="border-blue-200 bg-blue-50">
-            <Info className="h-4 w-4 text-blue-600" />
-            <AlertDescription className="text-blue-800 text-sm">
-              <strong>Hệ thống phân quyền:</strong> Quản lý quyền truy cập vào {totalModules} modules với {totalPermissions} quyền khác nhau.
+          <Alert className="border-blue-300 bg-gradient-to-r from-blue-50 to-blue-100 shadow-sm">
+            <Info className="h-5 w-5 text-blue-700" />
+            <AlertDescription className="text-blue-900 font-medium">
+              <strong className="font-bold">Hệ thống phân quyền:</strong> Quản lý quyền truy cập vào {totalModules} modules với {totalPermissions} quyền khác nhau.
               Admin có toàn quyền và không thể chỉnh sửa.
             </AlertDescription>
           </Alert>
 
           {/* Statistics Cards */}
           {stats.length > 0 ? (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {stats.map((stat) => {
                 const role = roles.find(r => r.roles === stat.role_id)
                 return (
-                  <Card key={stat.role_id} className="p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div 
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" 
-                        style={{ backgroundColor: `${role?.color}20` }}
-                      >
-                        {role?.icon || '👤'}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">{stat.role_name}</h3>
-                        <p className="text-xs text-gray-500">
-                          {stat.total_permissions} quyền
-                        </p>
-                      </div>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Modules:</span>
-                        <span className="font-medium">{stat.viewable_modules}/{totalModules}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-gray-500">Tạo:</span>
-                          <span className="ml-1 font-medium">{stat.create_permissions}</span>
+                  <Card key={stat.role_id} className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 bg-white border-2 border-gray-200">
+                    {/* Background Decoration */}
+                    <div 
+                      className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-20"
+                      style={{ backgroundColor: role?.color }}
+                    />
+                    
+                    <div className="relative p-6">
+                      {/* Header */}
+                      <div className="flex items-center gap-4 mb-6 pb-4 border-b-2 border-gray-100">
+                        <div 
+                          className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl shadow-lg ring-4 ring-white" 
+                          style={{ backgroundColor: `${role?.color}30` }}
+                        >
+                          {role?.icon || '👤'}
                         </div>
-                        <div>
-                          <span className="text-gray-500">Sửa:</span>
-                          <span className="ml-1 font-medium">{stat.update_permissions}</span>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-gray-900 text-sm truncate mb-1">{stat.role_name}</h3>
+                          <p className="text-xs text-gray-500 font-medium">
+                            {stat.total_permissions} quyền được cấp
+                          </p>
                         </div>
-                        <div>
-                          <span className="text-gray-500">Xóa:</span>
-                          <span className="ml-1 font-medium">{stat.delete_permissions}</span>
+                      </div>
+
+                      {/* Module Stats */}
+                      <div className="mb-5">
+                        <div className="flex justify-between items-center p-3 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl">
+                          <span className="text-gray-700 font-bold text-sm">📦 Modules</span>
+                          <span className="font-black text-purple-700 text-lg">{stat.viewable_modules}<span className="text-gray-400">/{totalModules}</span></span>
+                        </div>
+                      </div>
+
+                      {/* Action Stats */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="relative overflow-hidden group">
+                          <div className="text-center p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border-2 border-green-200 hover:border-green-400 transition-all">
+                            <div className="text-2xl mb-1">➕</div>
+                            <p className="text-xs text-gray-600 font-semibold mb-1">Tạo</p>
+                            <p className="text-2xl font-black text-green-700">{stat.create_permissions}</p>
+                          </div>
+                        </div>
+                        <div className="relative overflow-hidden group">
+                          <div className="text-center p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border-2 border-blue-200 hover:border-blue-400 transition-all">
+                            <div className="text-2xl mb-1">✏️</div>
+                            <p className="text-xs text-gray-600 font-semibold mb-1">Sửa</p>
+                            <p className="text-2xl font-black text-blue-700">{stat.update_permissions}</p>
+                          </div>
+                        </div>
+                        <div className="relative overflow-hidden group">
+                          <div className="text-center p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-xl border-2 border-red-200 hover:border-red-400 transition-all">
+                            <div className="text-2xl mb-1">🗑️</div>
+                            <p className="text-xs text-gray-600 font-semibold mb-1">Xóa</p>
+                            <p className="text-2xl font-black text-red-700">{stat.delete_permissions}</p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -538,38 +560,50 @@ export default function PermissionsPage() {
               })}
             </div>
           ) : (
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription>
+            <Alert className="border-amber-300 bg-amber-50">
+              <Info className="h-5 w-5 text-amber-600" />
+              <AlertDescription className="text-amber-900">
                 Thống kê không khả dụng. View v_role_permission_stats có thể chưa được tạo.
               </AlertDescription>
             </Alert>
           )}
 
           {/* Permissions Breakdown */}
-          <Card className="p-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
-              Phân tích quyền theo module
-            </h3>
-            <div className="space-y-3">
+          <Card className="p-8 shadow-xl border-2 border-gray-200 bg-white">
+            <div className="mb-6 pb-4 border-b-2 border-gray-200">
+              <h3 className="font-black text-gray-900 text-2xl flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl shadow-md">
+                  <TrendingUp className="h-7 w-7 text-blue-700" />
+                </div>
+                Phân tích quyền theo module
+              </h3>
+              <p className="text-gray-600 mt-2 ml-16">Chi tiết phân quyền cho từng module trong hệ thống</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {Object.entries(groupedPermissions).map(([module, perms]) => {
                 const meta = MODULE_METADATA[module]
                 return (
-                  <div key={module} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{meta?.icon || '📦'}</span>
-                      <div>
-                        <p className="font-medium text-gray-900">{meta?.label || module}</p>
-                        <p className="text-xs text-gray-500">{perms.length} quyền</p>
+                  <div key={module} className="group relative overflow-hidden">
+                    <div className="flex items-center justify-between p-5 bg-gradient-to-br from-white to-gray-50 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:shadow-xl transition-all duration-300">
+                      {/* Left Side */}
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl shadow-md group-hover:scale-110 transition-transform">
+                          <span className="text-4xl">{meta?.icon || '📦'}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-900 text-lg truncate">{meta?.label || module}</p>
+                          <p className="text-sm text-gray-500 font-medium">{perms.length} quyền khả dụng</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {perms.map(perm => (
-                        <Badge key={perm.id} variant="secondary" className="text-xs">
-                          {ACTION_LABELS[perm.action] || perm.action}
-                        </Badge>
-                      ))}
+                      
+                      {/* Right Side - Badges */}
+                      <div className="flex gap-2 flex-wrap justify-end ml-4">
+                        {perms.map(perm => (
+                          <Badge key={perm.id} className="text-xs font-bold px-4 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 border-2 border-gray-300 hover:from-blue-100 hover:to-blue-200 hover:border-blue-400 hover:text-blue-900 transition-all cursor-default">
+                            {ACTION_LABELS[perm.action] || perm.action}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )
@@ -579,7 +613,7 @@ export default function PermissionsPage() {
         </div>
       )}
 
-      {/* Matrix Tab */}
+      {/* Matrix Tab - GIỮ NGUYÊN NHƯ FILE GỐC */}
       {activeTab === "matrix" && (
         <div className="px-8 py-6 bg-gray-50 h-[calc(100vh-180px)]">
           <div className="flex items-center justify-between mb-6">

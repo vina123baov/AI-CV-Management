@@ -30,18 +30,18 @@ export function ProfileSettingsPage() {
   })
 
   // Load profile data when user or profile changes
-  useEffect(() => {
-    if (user) {
-      
-      setProfileData({
-        full_name: profile?.full_name || user.user_metadata?.full_name || '',
-        email: user.email || '',
-        phone: profile?.phone || user.user_metadata?.phone || '',
-        avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || ''
+    useEffect(() => {
+      if (user) {
+        const metadata = (user as any)?.user_metadata || {}
         
-      })
-    }
-  }, [user, profile])
+        setProfileData({
+          full_name: profile?.full_name || metadata.full_name || '',
+          email: user.email || '',
+          phone: profile?.phone || metadata.phone || '',
+          avatar_url: profile?.avatar_url || metadata.avatar_url || ''
+        })
+      }
+    }, [user, profile])
 
   const getInitials = () => {
     if (profileData.full_name) {
@@ -95,7 +95,7 @@ export function ProfileSettingsPage() {
     try {
       const { error } = await supabase.auth.updateUser({
         password: passwordData.newPassword
-      })
+})
 
       if (error) {
         alert(t('profile.messages.passwordChangeError'))
@@ -197,8 +197,7 @@ export function ProfileSettingsPage() {
 
       // Step 6: Update local state
       setProfileData(prev => ({ ...prev, avatar_url: publicUrl }))
-      
-      console.log('✅ Avatar updated successfully')
+console.log('✅ Avatar updated successfully')
       alert(t('profile.messages.saveSuccess'))
       
     } catch (error) {
@@ -277,7 +276,7 @@ export function ProfileSettingsPage() {
 
             {/* Full Name Input */}
             <div className="space-y-2">
-              <Label htmlFor="full_name">
+<Label htmlFor="full_name">
                 {t('profile.personalInfo.fullName')} <span className="text-red-500">*</span>
               </Label>
               <div className="relative">
@@ -352,7 +351,7 @@ export function ProfileSettingsPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <Lock className="w-5 h-5 text-primary" />
-              <CardTitle>{t('profile.security.title')}</CardTitle>
+<CardTitle>{t('profile.security.title')}</CardTitle>
             </div>
             <CardDescription>{t('profile.security.description')}</CardDescription>
           </CardHeader>
@@ -420,7 +419,7 @@ export function ProfileSettingsPage() {
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     {t('profile.buttons.saving')}
                   </>
-                ) : (
+) : (
                   t('profile.security.changePassword')
                 )}
               </Button>

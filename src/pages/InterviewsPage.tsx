@@ -1,4 +1,3 @@
-// src/pages/InterviewsPage.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -71,6 +70,28 @@ export function InterviewsPage() {
     notes: ""
   });
 
+  // ✅ LOGIC MỚI: Tự động mở dialog và điền ID ứng viên khi URL có tham số
+  // Logic này giúp kết nối với nút "Tạo lịch phỏng vấn" từ trang CV Filter
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const createMode = params.get('create');
+  const candidateId = params.get('candidateId');
+
+  if (createMode === 'true') {
+    setIsDialogOpen(true);
+    
+    if (candidateId) {
+      setFormData(prev => ({
+        ...prev,
+        candidate_id: candidateId
+      }));
+    }
+
+    // ✅ Xóa URL params sau khi đã xử lý để tránh dialog tự mở lại
+    window.history.replaceState({}, '', '/interviews');
+   }
+  }, []);
+
   useEffect(() => {
     async function getInterviews() {
       setLoading(true);
@@ -91,7 +112,7 @@ export function InterviewsPage() {
       if (error) {
         console.error('Error fetching interviews:', error);
       }
-setLoading(false);
+      setLoading(false);
     }
     getInterviews();
   }, []);
@@ -181,7 +202,7 @@ setLoading(false);
           *,
           cv_candidates!candidate_id (
             full_name,
-cv_jobs!job_id ( title )
+            cv_jobs!job_id ( title )
           )
         `)
         .order('interview_date', { ascending: false });
@@ -292,7 +313,7 @@ cv_jobs!job_id ( title )
 
       // 2. Tạo review mới
       const { error: reviewError } = await supabase
-.from('cv_interview_reviews')
+        .from('cv_interview_reviews')
         .insert([{
           interview_id: selectedInterview.id,
           rating: reviewData.rating,
@@ -391,7 +412,7 @@ cv_jobs!job_id ( title )
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-{/* Tổng số */}
+        {/* Tổng số */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
@@ -464,7 +485,7 @@ cv_jobs!job_id ( title )
           <SelectTrigger className="w-[180px] bg-white">
             <SelectValue placeholder="Tất cả vị trí" />
           </SelectTrigger>
-<SelectContent>
+          <SelectContent>
             <SelectItem value="all">Tất cả vị trí</SelectItem>
             {Array.from(new Set(interviews.map(i => i.cv_candidates?.cv_jobs?.title).filter(Boolean))).map(position => (
               <SelectItem key={position} value={position as string}>{position}</SelectItem>
@@ -530,7 +551,7 @@ cv_jobs!job_id ( title )
                   <TableCell colSpan={7} className="text-center h-64">
                     <div className="flex flex-col items-center justify-center">
                       <Calendar className="h-16 w-16 text-gray-300 mb-4" />
-<h3 className="text-base font-medium text-gray-900">
+                      <h3 className="text-base font-medium text-gray-900">
                         {searchTerm || statusFilter !== 'all' || positionFilter !== 'all' 
                           ? 'Không tìm thấy kết quả phù hợp' 
                           : 'Chưa có lịch phỏng vấn nào'}
@@ -588,7 +609,7 @@ cv_jobs!job_id ( title )
                           >
                             Hủy lịch
                           </DropdownMenuItem>
-</DropdownMenuContent>
+                        </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
@@ -660,7 +681,7 @@ cv_jobs!job_id ( title )
 
               {/* Vị trí ứng tuyển */}
               <div className="space-y-2">
-<label className="flex items-center gap-2 text-sm font-medium">
+                <label className="flex items-center gap-2 text-sm font-medium">
                   <Briefcase className="w-4 h-4" />
                   Vị trí ứng tuyển <span className="text-red-500">*</span>
                 </label>
@@ -721,7 +742,7 @@ cv_jobs!job_id ( title )
                   <Input
                     type="time"
                     value={formData.interview_time}
-onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
+                    onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
                     required
                     className="bg-white"
                   />
@@ -794,7 +815,8 @@ onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
                   required
                 />
               </div>
-{/* Ghi chú */}
+
+              {/* Ghi chú */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Ghi chú</label>
                 <textarea
@@ -859,7 +881,7 @@ onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-gray-600">Ứng viên</label>
-<p className="mt-1 text-base font-semibold">{selectedInterview.cv_candidates?.full_name || 'N/A'}</p>
+                    <p className="mt-1 text-base font-semibold">{selectedInterview.cv_candidates?.full_name || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-600">Vị trí ứng tuyển</label>
@@ -922,7 +944,7 @@ onChange={(e) => setFormData({...formData, interview_time: e.target.value})}
       {isEditDialogOpen && selectedInterview && (
         <>
           <div
-className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
             style={{ zIndex: 999999 }}
             onClick={() => setIsEditDialogOpen(false)}
           />
@@ -981,7 +1003,7 @@ className="fixed inset-0 bg-black/70 backdrop-blur-sm"
                   disabled={submitting}
                 >
                   Hủy
-</Button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1048,7 +1070,7 @@ className="fixed inset-0 bg-black/70 backdrop-blur-sm"
                         />
                       </button>
                     ))}
-<span className="ml-2 text-lg font-semibold text-gray-700">
+                    <span className="ml-2 text-lg font-semibold text-gray-700">
                       {reviewData.rating > 0 ? `${reviewData.rating}/5` : 'Chưa chọn'}
                     </span>
                   </div>
