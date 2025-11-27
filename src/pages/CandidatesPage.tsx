@@ -883,7 +883,7 @@ export function CandidatesPage() {
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Chọn vị trí" />
                       </SelectTrigger>
-                      <SelectContent className="bg-white z-50 shadow-lg border border-gray-200 max-h-[300px]">
+                      <SelectContent className="bg-white z-60 shadow-lg border border-gray-200 max-h-[300px]">
                         {jobs.map((job) => (
                           <SelectItem key={job.id} value={job.id}>
                             {job.title} - {job.level}
@@ -992,7 +992,34 @@ export function CandidatesPage() {
                     disabled={isUploading}
                   />
                   
-                  {selectedFile ? (
+                  {isUploading ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-center">
+                        <div className="relative">
+                          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600"></div>
+                          <FileText className="h-6 w-6 text-blue-600 absolute top-3 left-3" />
+                        </div>
+                      </div>
+                      <div className="text-center space-y-2">
+                        <p className="text-sm font-medium text-blue-700">
+                          Đang phân tích CV...
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          AI đang trích xuất thông tin từ CV của bạn
+                        </p>
+                        <div className="flex items-center justify-center space-x-1">
+                          <div className="h-2 w-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                          <div className="h-2 w-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                          <div className="h-2 w-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <p className="text-xs text-blue-700 text-center">
+                          ⏱️ Quá trình này mất khoảng 10-30 giây
+                        </p>
+                      </div>
+                    </div>
+                  ) : selectedFile ? (
                     <div className="space-y-3">
                       <FileText className="h-12 w-12 mx-auto text-green-600" />
                       <div>
@@ -1009,9 +1036,9 @@ export function CandidatesPage() {
                             <span>Chọn file khác</span>
                           </Button>
                         </label>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           type="button"
                           onClick={handleRemoveFile}
                           className="text-red-600 hover:text-red-700"
@@ -1024,10 +1051,10 @@ export function CandidatesPage() {
                     <label htmlFor="cv-upload" className="cursor-pointer block">
                       <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                       <p className="text-sm text-gray-600 mb-2">
-                        {isUploading ? 'Đang phân tích CV...' : 'Kéo thả file CV vào đây hoặc click để chọn'}
+                        Kéo thả file CV vào đây hoặc click để chọn
                       </p>
-                      <Button variant="outline" size="sm" type="button" disabled={isUploading}>
-                        {isUploading ? 'Đang xử lý...' : 'Chọn file'}
+                      <Button variant="outline" size="sm" type="button">
+                        Chọn file
                       </Button>
                       <p className="text-xs text-gray-500 mt-2">
                         Hỗ trợ: PDF, DOCX, TXT (tối đa 5MB)
@@ -1446,7 +1473,7 @@ export function CandidatesPage() {
                 <SelectTrigger>
                   <SelectValue placeholder="Tất cả trạng thái" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[60] bg-white shadow-lg border border-gray-200">
                   <SelectItem value="all">Tất cả trạng thái</SelectItem>
                   {uniqueStatuses.map(status => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
@@ -1460,7 +1487,7 @@ export function CandidatesPage() {
                 <SelectTrigger>
                   <SelectValue placeholder="Tất cả vị trí" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-60 bg-white shadow-lg border border-gray-200">
                   <SelectItem value="all">Tất cả vị trí</SelectItem>
                   {uniquePositions.map(pos => (
                     <SelectItem key={pos} value={pos}>{pos}</SelectItem>
@@ -1474,7 +1501,7 @@ export function CandidatesPage() {
                 <SelectTrigger>
                   <SelectValue placeholder="Tất cả cấp độ" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-60 bg-white shadow-lg border border-gray-200">
                   <SelectItem value="all">Tất cả cấp độ</SelectItem>
                   {uniqueLevels.map(level => (
                     <SelectItem key={level} value={level}>{level}</SelectItem>
@@ -1488,7 +1515,7 @@ export function CandidatesPage() {
                 <SelectTrigger>
                   <SelectValue placeholder="Tất cả nguồn" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-60 bg-white shadow-lg border border-gray-200">
                   <SelectItem value="all">Tất cả nguồn</SelectItem>
                   <SelectItem value="Website">Website</SelectItem>
                   <SelectItem value="LinkedIn">LinkedIn</SelectItem>
@@ -1647,7 +1674,7 @@ export function CandidatesPage() {
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="end" className="z-[60] bg-white shadow-lg border border-gray-200">
                         <DropdownMenuItem onClick={() => handleViewCandidate(candidate)} className="flex items-center gap-2">
                           <Eye className="h-4 w-4 text-blue-600" />
                           <span>Xem thông tin</span>

@@ -453,9 +453,8 @@ export default function PotentialCandidatesPage() {
 
   // ✅ Hàm chuyển hướng đến trang phỏng vấn sử dụng navigate
   const handleCreateInterview = (candidate: any) => {
-  // ✅ Đổi từ '/interviews' sang '/phong-van'
   navigate(`/phong-van?create=true&candidateId=${candidate.id}`);
- };
+  };
 
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((c) => {

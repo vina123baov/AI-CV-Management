@@ -18,7 +18,8 @@ router.post('/parse-cv', async (req, res) => {
 
     res.json(message);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: message });
   }
 });
 
