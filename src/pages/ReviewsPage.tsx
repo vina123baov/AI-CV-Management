@@ -29,6 +29,7 @@ interface Review {
   outcome: string;
   notes: string;
   created_at: string;
+  updated_at?: string; // From V2
   cv_interviews: {
     id: string;
     round: string;
@@ -46,15 +47,42 @@ interface Review {
   } | null;
 }
 
+// Định nghĩa kiểu dữ liệu cho interview đang chờ đánh giá (From V1)
+interface PendingInterview {
+  id: string;
+  interview_date: string;
+  round: string;
+  interviewer: string;
+  duration: string;
+  location: string;
+  format: string;
+  cv_candidates: {
+    full_name: string;
+    cv_jobs: {
+      title: string;
+    } | null;
+  } | null;
+}
+
 export function ReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [pendingInterviews, setPendingInterviews] = useState<PendingInterview[]>([]); // From V1
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalReviews: 0, averageRating: 0, recommendationRate: 0 });
+  
+  // Dialog States
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isReratingDialogOpen, setIsReratingDialogOpen] = useState(false);
+  const [isNewReviewDialogOpen, setIsNewReviewDialogOpen] = useState(false); // From V1
+  
+  // Data Selection States
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+  const [selectedPendingInterview, setSelectedPendingInterview] = useState<PendingInterview | null>(null); // From V1
+  
+  // Form States
   const [newRating, setNewRating] = useState(0);
   const [newNote, setNewNote] = useState('');
+  const [reviewOutcome, setReviewOutcome] = useState('Vòng tiếp theo'); // From V1
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -63,7 +91,9 @@ export function ReviewsPage() {
 
   async function getReviews() {
     setLoading(true);
-    const { data, error } = await supabase
+
+    // 1. Get existing reviews
+    const { data: reviewData, error: reviewError } = await supabase
       .from('cv_interview_reviews')
       .select(`
         *,
@@ -77,39 +107,63 @@ export function ReviewsPage() {
       `)
       .order('created_at', { ascending: false });
 
-    if (data) {
-      // Loại bỏ các đánh giá trùng lặp - chỉ giữ lại đánh giá mới nhất cho mỗi interview
-      const uniqueReviews = data.reduce((acc: Review[], review: Review) => {
+    // 2. Get pending interviews (From V1 Logic)
+    const { data: pendingData, error: pendingError } = await supabase
+      .from('cv_interviews')
+      .select(`
+        id,
+        interview_date,
+        round,
+        interviewer,
+        duration,
+        location,
+        format,
+        cv_candidates (
+          full_name,
+          cv_jobs ( title )
+        )
+      `)
+      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá']) // Lấy các interview cần đánh giá
+      .order('interview_date', { ascending: false });
+
+    if (reviewData) {
+      // ✅ MERGED LOGIC FROM V2: Unique Reviews (Chỉ lấy review mới nhất cho mỗi interview)
+      const uniqueReviews = (reviewData as Review[]).reduce((acc: Review[], review: Review) => {
         const existingIndex = acc.findIndex((r: Review) => r.cv_interviews?.id === review.cv_interviews?.id);
         
         if (existingIndex === -1) {
-          // Chưa có đánh giá cho interview này, thêm vào
           acc.push(review);
         } else {
-          // Đã có đánh giá, so sánh thời gian và giữ lại cái mới nhất
+          // Keep the latest one
           const existingDate = new Date(acc[existingIndex].created_at);
           const currentDate = new Date(review.created_at);
-          
           if (currentDate > existingDate) {
             acc[existingIndex] = review;
           }
         }
-        
         return acc;
       }, [] as Review[]);
-      
+
       setReviews(uniqueReviews);
+
+      // Calculate Stats
       const total = uniqueReviews.length;
-      const sumOfRatings = uniqueReviews.reduce((sum: number, review: Review) => sum + review.rating, 0);
-      const recommendedCount = uniqueReviews.filter((review: Review) => review.outcome === 'Vòng tiếp theo' || review.outcome === 'Đạt').length;
-      
+      const sumOfRatings = uniqueReviews.reduce((sum, review) => sum + review.rating, 0);
+      const recommendedCount = uniqueReviews.filter(review => review.outcome === 'Vòng tiếp theo' || review.outcome === 'Đạt').length;
+
       setStats({
         totalReviews: total,
         averageRating: total > 0 ? sumOfRatings / total : 0,
         recommendationRate: total > 0 ? (recommendedCount / total) * 100 : 0,
       });
     }
-    if (error) console.error('Error fetching reviews:', error);
+
+    if (pendingData) {
+      setPendingInterviews(pendingData as unknown as PendingInterview[]);
+    }
+
+    if (reviewError) console.error('Error fetching reviews:', reviewError);
+    if (pendingError) console.error('Error fetching pending interviews:', pendingError);
     setLoading(false);
   }
 
@@ -119,7 +173,64 @@ export function ReviewsPage() {
     setIsDetailDialogOpen(true);
   };
 
-  // Đánh giá lại
+  // Mở form đánh giá cho interview đang chờ (From V1)
+  const handleCreateReview = (interview: PendingInterview) => {
+    setSelectedPendingInterview(interview);
+    setIsNewReviewDialogOpen(true);
+    setNewRating(0);
+    setNewNote('');
+    setReviewOutcome('Vòng tiếp theo');
+  };
+
+  // Nộp đánh giá mới (From V1 Logic)
+  const handleSubmitNewReview = async () => {
+    if (!selectedPendingInterview || newRating === 0) {
+      alert('Vui lòng chọn số sao đánh giá!');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // 1. Tạo review mới
+      const { error: reviewError } = await supabase
+        .from('cv_interview_reviews')
+        .insert([{
+          interview_id: selectedPendingInterview.id,
+          rating: newRating,
+          notes: newNote,
+          outcome: reviewOutcome
+        }]);
+
+      if (reviewError) throw reviewError;
+
+      // 2. Cập nhật trạng thái interview thành "Hoàn thành"
+      const { error: updateError } = await supabase
+        .from('cv_interviews')
+        .update({ status: 'Hoàn thành' })
+        .eq('id', selectedPendingInterview.id);
+
+      if (updateError) throw updateError;
+
+      // 3. Refresh dữ liệu
+      await getReviews();
+
+      // 4. Đóng dialog và reset form
+      setIsNewReviewDialogOpen(false);
+      setSelectedPendingInterview(null);
+      setNewRating(0);
+      setNewNote('');
+      setReviewOutcome('Vòng tiếp theo');
+
+      alert('Đánh giá đã được lưu thành công!');
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      alert('Có lỗi xảy ra khi lưu đánh giá!');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Đánh giá lại (Edit Review)
   const handleRerating = (review: Review) => {
     setSelectedReview(review);
     setNewRating(review.rating);
@@ -127,7 +238,7 @@ export function ReviewsPage() {
     setIsReratingDialogOpen(true);
   };
 
-  // Submit đánh giá lại
+  // Submit đánh giá lại (Merged V1 & V2)
   const handleSubmitRerating = async () => {
     if (!selectedReview || newRating === 0) {
       alert('Vui lòng chọn số sao đánh giá!');
@@ -136,7 +247,7 @@ export function ReviewsPage() {
 
     setSubmitting(true);
     try {
-      // Cập nhật đánh giá với updated_at để track thời gian chỉnh sửa
+      // ✅ MERGED: Update rating, notes AND updated_at timestamp (From V2)
       const { data, error } = await supabase
         .from('cv_interview_reviews')
         .update({ 
@@ -147,16 +258,9 @@ export function ReviewsPage() {
         .eq('id', selectedReview.id)
         .select();
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      if (!data || data.length === 0) {
-        throw new Error('Không tìm thấy bản ghi để cập nhật');
-      }
-
-      // Refresh data sau khi update thành công
+      // Refresh data
       await getReviews();
 
       setIsReratingDialogOpen(false);
@@ -175,6 +279,7 @@ export function ReviewsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Đánh giá phỏng vấn</h1>
@@ -186,6 +291,7 @@ export function ReviewsPage() {
         </Button>
       </div>
       
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -220,7 +326,62 @@ export function ReviewsPage() {
           </CardContent>
         </Card>
       </div>
-      
+
+      {/* ✅ MERGED: Pending Reviews Section (From V1) */}
+      {pendingInterviews.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-orange-500" />
+              Chờ đánh giá ({pendingInterviews.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Ứng viên</TableHead>
+                  <TableHead>Vị trí</TableHead>
+                  <TableHead>Vòng</TableHead>
+                  <TableHead>Người PV</TableHead>
+                  <TableHead>Ngày PV</TableHead>
+                  <TableHead>Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingInterviews.map((interview) => (
+                  <TableRow key={interview.id}>
+                    <TableCell className="font-medium">{interview.cv_candidates?.full_name || 'N/A'}</TableCell>
+                    <TableCell>{interview.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
+                    <TableCell>{interview.round}</TableCell>
+                    <TableCell>{interview.interviewer}</TableCell>
+                    <TableCell>
+                      {new Date(interview.interview_date).toLocaleString('vi-VN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        onClick={() => handleCreateReview(interview)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Đánh giá
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reviews List Table */}
       <Card>
         <CardHeader>
           <CardTitle>Danh sách đánh giá</CardTitle>
@@ -413,7 +574,7 @@ export function ReviewsPage() {
         </>
       )}
 
-      {/* Dialog Đánh giá lại */}
+      {/* Dialog Đánh giá lại (Rerating) */}
       {isReratingDialogOpen && selectedReview && (
         <>
           <div 
@@ -533,6 +694,139 @@ export function ReviewsPage() {
                 >
                   <Star className="w-4 h-4 mr-2" />
                   {submitting ? 'Đang lưu...' : 'Cập nhật đánh giá'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ✅ MERGED: New Review Dialog (From V1) */}
+      {isNewReviewDialogOpen && selectedPendingInterview && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            style={{ zIndex: 999999 }}
+            onClick={() => {
+              setIsNewReviewDialogOpen(false);
+              setSelectedPendingInterview(null);
+              setNewRating(0);
+              setNewNote('');
+              setReviewOutcome('Vòng tiếp theo');
+            }}
+          />
+
+          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1000000 }}>
+            <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-lg m-4 pointer-events-auto">
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Star className="w-5 h-5 text-yellow-500" />
+                  Đánh giá buổi phỏng vấn
+                </h2>
+                <button
+                  onClick={() => {
+                    setIsNewReviewDialogOpen(false);
+                    setSelectedPendingInterview(null);
+                    setNewRating(0);
+                    setNewNote('');
+                    setReviewOutcome('Vòng tiếp theo');
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Thông tin ứng viên */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600">Ứng viên</p>
+                  <p className="font-semibold text-lg">{selectedPendingInterview.cv_candidates?.full_name}</p>
+                  <p className="text-sm text-gray-600 mt-1">{selectedPendingInterview.cv_candidates?.cv_jobs?.title}</p>
+                </div>
+
+                {/* Rating */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">
+                    Đánh giá <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setNewRating(star)}
+                        className="transition-transform hover:scale-110"
+                      >
+                        <Star
+                          className={`w-10 h-10 ${
+                            star <= newRating
+                              ? 'fill-yellow-400 text-yellow-400'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                    <span className="ml-2 text-lg font-semibold text-gray-700">
+                      {newRating > 0 ? `${newRating}/5` : 'Chưa chọn'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Outcome */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Kết quả <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={reviewOutcome}
+                    onValueChange={(value) => setReviewOutcome(value)}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
+                      <SelectItem value="Vòng tiếp theo">Vòng tiếp theo</SelectItem>
+                      <SelectItem value="Đạt">Đạt</SelectItem>
+                      <SelectItem value="Không đạt">Không đạt</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Ghi chú đánh giá</label>
+                  <Textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Nhập ghi chú về buổi phỏng vấn..."
+                    rows={4}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t px-6 py-4 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsNewReviewDialogOpen(false);
+                    setSelectedPendingInterview(null);
+                    setNewRating(0);
+                    setNewNote('');
+                    setReviewOutcome('Vòng tiếp theo');
+                  }}
+                  disabled={submitting}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleSubmitNewReview}
+                  disabled={submitting || newRating === 0}
+                >
+                  <Star className="w-4 h-4 mr-2" />
+                  {submitting ? 'Đang lưu...' : 'Lưu đánh giá'}
                 </Button>
               </div>
             </div>
