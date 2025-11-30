@@ -356,6 +356,17 @@ export function InterviewsPage() {
 
       if (error) throw error;
 
+      if (formData.candidate_id) {
+        const { error: updateError } = await supabase
+          .from('cv_candidates')
+          .update({ status: 'Phỏng vấn' })
+          .eq('id', formData.candidate_id);
+        
+        if (updateError) {
+           console.error('Lỗi tự động cập nhật trạng thái ứng viên:', updateError);
+        }
+      }
+
       // Refresh list
       const { data: updatedInterviews } = await supabase
         .from('cv_interviews')
