@@ -38,17 +38,21 @@ interface Interview {
   id: string;
   interview_date: string;
   interviewer: string;
-  round: string;
   format: string;
   status: string;
   duration: string;
   location: string;
   end_time?: string;
+  job_id?: string;
   cv_candidates: {
     full_name: string;
     cv_jobs: {
       title: string;
     } | null;
+  } | null;
+  cv_jobs?: {
+    id: string;
+    title: string;
   } | null;
 }
 
@@ -72,6 +76,9 @@ export function InterviewsPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Position selection state
+  const [useDifferentPosition, setUseDifferentPosition] = useState(false);
+
   const [reviewData, setReviewData] = useState({
     rating: 0,
     notes: '',
@@ -82,7 +89,6 @@ export function InterviewsPage() {
   const [formData, setFormData] = useState({
     candidate_id: "",
     job_id: "",
-    round: "",
     interview_date: "",
     interview_time: "",
     duration: "60",
@@ -212,7 +218,8 @@ export function InterviewsPage() {
           cv_candidates!candidate_id (
             full_name,
             cv_jobs!job_id ( title )
-          )
+          ),
+          cv_jobs!job_id ( id, title )
         `)
         .order('interview_date', { ascending: false });
 
@@ -298,7 +305,10 @@ export function InterviewsPage() {
       return false;
     }
 
-    const interviewDateTime = new Date(`${formData.interview_date}T${formData.interview_time}`);
+    // Tạo Date object với local timezone giống như trong handleSubmit
+    const [year, month, day] = formData.interview_date.split('-');
+    const [hours, minutes] = formData.interview_time.split(':');
+    const interviewDateTime = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
     const now = new Date();
 
     if (isNaN(interviewDateTime.getTime())) {
@@ -331,12 +341,16 @@ export function InterviewsPage() {
     setSubmitting(true);
 
     try {
-      const interviewDateTime = `${formData.interview_date}T${formData.interview_time}:00`;
+      // Tạo thời gian theo local timezone và định dạng ISO để lưu vào database
+      const [year, month, day] = formData.interview_date.split('-');
+      const [hours, minutes] = formData.interview_time.split(':');
+
+      // Tạo Date object với local timezone
+      const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
 
       let interviewData: any = {
-        interview_date: interviewDateTime,
+        interview_date: localDate.toISOString(),
         interviewer: formData.interviewer,
-        round: formData.round,
         format: formData.format,
         status: 'Đang chờ',
         duration: formData.duration,
@@ -347,6 +361,11 @@ export function InterviewsPage() {
       // Use candidate_id if exists, otherwise use name/email directly
       if (formData.candidate_id) {
         interviewData.candidate_id = formData.candidate_id;
+      }
+
+      // Add job_id for the interview position
+      if (formData.job_id) {
+        interviewData.job_id = formData.job_id;
       }
 
       const { data, error } = await supabase
@@ -364,7 +383,8 @@ export function InterviewsPage() {
           cv_candidates!candidate_id (
             full_name,
             cv_jobs!job_id ( title )
-          )
+          ),
+          cv_jobs!job_id ( id, title )
         `)
         .order('interview_date', { ascending: false });
 
@@ -376,7 +396,6 @@ export function InterviewsPage() {
       setFormData({
         candidate_id: "",
         job_id: "",
-        round: "",
         interview_date: "",
         interview_time: "",
         duration: "60",
@@ -387,6 +406,7 @@ export function InterviewsPage() {
       });
       setFormErrors({ interview_date: "", interview_time: "", duration: "" });
       setSelectedCandidate(null);
+      setUseDifferentPosition(false);
       setIsDialogOpen(false);
 
       alert('Tạo lịch phỏng vấn thành công!');
@@ -514,12 +534,13 @@ export function InterviewsPage() {
 
   // Lọc dữ liệu
   const filteredInterviews = interviews.filter(interview => {
-    const matchesSearch = 
+    const position = interview.cv_jobs?.title || interview.cv_candidates?.cv_jobs?.title;
+    const matchesSearch =
       interview.cv_candidates?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      interview.cv_candidates?.cv_jobs?.title?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+      position?.toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchesStatus = statusFilter === 'all' || interview.status === statusFilter;
-    const matchesPosition = positionFilter === 'all' || interview.cv_candidates?.cv_jobs?.title === positionFilter;
+    const matchesPosition = positionFilter === 'all' || position === positionFilter;
 
     return matchesSearch && matchesStatus && matchesPosition;
   });
@@ -637,7 +658,7 @@ export function InterviewsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tất cả vị trí</SelectItem>
-            {Array.from(new Set(interviews.map(i => i.cv_candidates?.cv_jobs?.title).filter(Boolean))).map(position => (
+            {Array.from(new Set(interviews.map(i => i.cv_jobs?.title || i.cv_candidates?.cv_jobs?.title).filter(Boolean))).map(position => (
               <SelectItem key={position} value={position as string}>{position}</SelectItem>
             ))}
           </SelectContent>
@@ -682,7 +703,6 @@ export function InterviewsPage() {
               <TableRow>
                 <TableHead>Ứng viên</TableHead>
                 <TableHead>Vị trí ứng tuyển</TableHead>
-                <TableHead>Vòng phỏng vấn</TableHead>
                 <TableHead>Ngày & Giờ</TableHead>
                 <TableHead>Người phỏng vấn</TableHead>
                 <TableHead>Trạng thái</TableHead>
@@ -692,7 +712,7 @@ export function InterviewsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-64">
+                  <TableCell colSpan={6} className="text-center h-64">
                     <div className="flex flex-col items-center justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
                       <p className="text-sm text-muted-foreground">Đang tải dữ liệu...</p>
@@ -701,7 +721,7 @@ export function InterviewsPage() {
                 </TableRow>
               ) : filteredInterviews.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-64">
+                  <TableCell colSpan={6} className="text-center h-64">
                     <div className="flex flex-col items-center justify-center">
                       <Calendar className="h-16 w-16 text-gray-300 mb-4" />
                       <h3 className="text-base font-medium text-gray-900">
@@ -724,17 +744,21 @@ export function InterviewsPage() {
                       {interview.cv_candidates?.full_name || 'N/A'}
                     </TableCell>
                     <TableCell>
-                      {interview.cv_candidates?.cv_jobs?.title || 'N/A'}
+                      {interview.cv_jobs?.title || interview.cv_candidates?.cv_jobs?.title || 'N/A'}
                     </TableCell>
-                    <TableCell>{interview.round}</TableCell>
-                    <TableCell>
-                      {new Date(interview.interview_date).toLocaleString('vi-VN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                                        <TableCell>
+                      {(() => {
+                        const date = new Date(interview.interview_date);
+                        // Hiển thị theo local timezone (giờ Việt Nam) mà không thay đổi giá trị thời gian
+                        return date.toLocaleString('vi-VN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          timeZone: 'Asia/Ho_Chi_Minh'
+                        });
+                      })()}
                     </TableCell>
                     <TableCell>{interview.interviewer}</TableCell>
                     <TableCell>
@@ -869,6 +893,7 @@ export function InterviewsPage() {
                                 onClick={() => {
                                     setSelectedCandidate(null);
                                     setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
+                                    setUseDifferentPosition(false);
                                 }}
                                 type="button"
                             >
@@ -887,21 +912,71 @@ export function InterviewsPage() {
                 </label>
 
                 {selectedCandidate?.cv_jobs ? (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">
-                        Vị trí đang ứng tuyển:
-                      </p>
-                      <p className="text-base font-semibold text-blue-900">
-                        {selectedCandidate.cv_jobs.title}
-                      </p>
-                      <p className="text-xs text-blue-600">
-                        Cấp bậc: {selectedCandidate.cv_jobs.level}
-                      </p>
+                  <div className="space-y-3">
+                    {/* Current position display */}
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-blue-800">
+                            Vị trí đang ứng tuyển:
+                          </p>
+                          <p className="text-base font-semibold text-blue-900">
+                            {selectedCandidate.cv_jobs.title}
+                          </p>
+                          <p className="text-xs text-blue-600">
+                            Cấp bậc: {selectedCandidate.cv_jobs.level}
+                          </p>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Option to select different position */}
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="useDifferentPosition"
+                        checked={useDifferentPosition}
+                        onChange={(e) => {
+                          setUseDifferentPosition(e.target.checked);
+                          if (!e.target.checked) {
+                            // Reset to original position when unchecked
+                            setFormData(prev => ({
+                              ...prev,
+                              job_id: selectedCandidate.cv_jobs?.id || ""
+                            }));
+                          }
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="useDifferentPosition" className="text-sm text-gray-700">
+                        Phỏng vấn cho vị trí khác
+                      </label>
+                    </div>
+
+                    {/* Position selector when using different position */}
+                    {useDifferentPosition && (
+                      <div>
+                        <Select
+                          value={formData.job_id}
+                          onValueChange={(value) => setFormData({...formData, job_id: value})}
+                          required
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue placeholder="Chọn vị trí phỏng vấn" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
+                            {jobs.map((job) => (
+                              <SelectItem key={job.id} value={job.id}>
+                                {job.title}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <Select 
+                  <Select
                     value={formData.job_id}
                     onValueChange={(value) => setFormData({...formData, job_id: value})}
                     required
@@ -920,28 +995,7 @@ export function InterviewsPage() {
                 )}
               </div>
 
-              {/* Vòng phỏng vấn */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <div className="w-4 h-4 rounded-full border-2 border-current" />
-                  Vòng phỏng vấn <span className="text-red-500">*</span>
-                </label>
-                <Select 
-                  value={formData.round} 
-                  onValueChange={(value) => setFormData({...formData, round: value})}
-                  required
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Chọn vòng phỏng vấn" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                    <SelectItem value="Vòng 1">Vòng 1 - Sơ tuyển</SelectItem>
-                    <SelectItem value="Vòng 2">Vòng 2 - Chuyên môn</SelectItem>
-                    <SelectItem value="Vòng 3">Vòng 3 - Cuối cùng</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
+              
               {/* Ngày và Giờ phỏng vấn */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -1071,7 +1125,7 @@ export function InterviewsPage() {
                 <Button 
                   type="submit" 
                   className="bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={submitting || !formData.candidate_id || !formData.job_id || !formData.round || !formData.interview_date || !formData.interview_time || !formData.interviewer}
+                  disabled={submitting || !formData.candidate_id || !formData.job_id || !formData.interview_date || !formData.interview_time || !formData.interviewer}
                 >
                   <Calendar className="w-4 h-4 mr-2" />
                   {submitting ? 'Đang tạo...' : 'Tạo lịch phỏng vấn'}
@@ -1114,14 +1168,10 @@ export function InterviewsPage() {
                     <p className="mt-1 text-base font-semibold">{selectedInterview.cv_candidates?.full_name || 'N/A'}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-600">Vị trí ứng tuyển</label>
-                    <p className="mt-1 text-base">{selectedInterview.cv_candidates?.cv_jobs?.title || 'N/A'}</p>
+                    <label className="text-sm font-medium text-gray-600">Vị trí phỏng vấn</label>
+                    <p className="mt-1 text-base">{selectedInterview.cv_jobs?.title || selectedInterview.cv_candidates?.cv_jobs?.title || 'N/A'}</p>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Vòng phỏng vấn</label>
-                    <p className="mt-1 text-base">{selectedInterview.round}</p>
-                  </div>
-                  <div>
+                                    <div>
                     <label className="text-sm font-medium text-gray-600">Trạng thái</label>
                     <div className="mt-1">
                       <Badge className={getStatusBadgeClass(selectedInterview.status)}>
@@ -1132,13 +1182,18 @@ export function InterviewsPage() {
                   <div>
                     <label className="text-sm font-medium text-gray-600">Ngày & Giờ</label>
                     <p className="mt-1 text-base">
-                      {new Date(selectedInterview.interview_date).toLocaleString('vi-VN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                      {(() => {
+                        const date = new Date(selectedInterview.interview_date);
+                        // Hiển thị theo local timezone (giờ Việt Nam) mà không thay đổi giá trị thời gian
+                        return date.toLocaleString('vi-VN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          timeZone: 'Asia/Ho_Chi_Minh'
+                        });
+                      })()}
                     </p>
                   </div>
                   <div>
@@ -1205,7 +1260,7 @@ export function InterviewsPage() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm text-gray-600">Ứng viên</p>
                   <p className="font-semibold text-lg">{selectedInterview.cv_candidates?.full_name}</p>
-                  <p className="text-sm text-gray-600 mt-1">{selectedInterview.cv_candidates?.cv_jobs?.title}</p>
+                  <p className="text-sm text-gray-600 mt-1">{selectedInterview.cv_jobs?.title || selectedInterview.cv_candidates?.cv_jobs?.title}</p>
                 </div>
 
                 {/* Rating */}

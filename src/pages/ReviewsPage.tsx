@@ -32,7 +32,6 @@ interface Review {
   updated_at?: string; // From V2
   cv_interviews: {
     id: string;
-    round: string;
     interviewer: string;
     interview_date: string;
     duration: string;
@@ -51,7 +50,6 @@ interface Review {
 interface PendingInterview {
   id: string;
   interview_date: string;
-  round: string;
   interviewer: string;
   duration: string;
   location: string;
@@ -113,7 +111,6 @@ export function ReviewsPage() {
       .select(`
         id,
         interview_date,
-        round,
         interviewer,
         duration,
         location,
@@ -342,7 +339,6 @@ export function ReviewsPage() {
                 <TableRow>
                   <TableHead>Ứng viên</TableHead>
                   <TableHead>Vị trí</TableHead>
-                  <TableHead>Vòng</TableHead>
                   <TableHead>Người PV</TableHead>
                   <TableHead>Ngày PV</TableHead>
                   <TableHead>Thao tác</TableHead>
@@ -353,8 +349,7 @@ export function ReviewsPage() {
                   <TableRow key={interview.id}>
                     <TableCell className="font-medium">{interview.cv_candidates?.full_name || 'N/A'}</TableCell>
                     <TableCell>{interview.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
-                    <TableCell>{interview.round}</TableCell>
-                    <TableCell>{interview.interviewer}</TableCell>
+                                        <TableCell>{interview.interviewer}</TableCell>
                     <TableCell>
                       {new Date(interview.interview_date).toLocaleString('vi-VN', {
                         year: 'numeric',
@@ -392,7 +387,6 @@ export function ReviewsPage() {
               <TableRow>
                 <TableHead>Ứng viên</TableHead>
                 <TableHead>Vị trí</TableHead>
-                <TableHead>Vòng</TableHead>
                 <TableHead>Người PV</TableHead>
                 <TableHead>Ngày PV</TableHead>
                 <TableHead>Đánh giá</TableHead>
@@ -402,19 +396,18 @@ export function ReviewsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-24">Đang tải dữ liệu...</TableCell>
+                  <TableCell colSpan={6} className="text-center h-24">Đang tải dữ liệu...</TableCell>
                 </TableRow>
               ) : reviews.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-24">Chưa có đánh giá nào</TableCell>
+                  <TableCell colSpan={6} className="text-center h-24">Chưa có đánh giá nào</TableCell>
                 </TableRow>
               ) : (
                 reviews.map((review) => (
                   <TableRow key={review.id}>
                     <TableCell className="font-medium">{review.cv_interviews?.cv_candidates?.full_name || 'N/A'}</TableCell>
                     <TableCell>{review.cv_interviews?.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
-                    <TableCell>{review.cv_interviews?.round || 'N/A'}</TableCell>
-                    <TableCell>{review.cv_interviews?.interviewer || 'N/A'}</TableCell>
+                                        <TableCell>{review.cv_interviews?.interviewer || 'N/A'}</TableCell>
                     <TableCell>{review.cv_interviews ? new Date(review.cv_interviews.interview_date).toLocaleDateString('vi-VN') : 'N/A'}</TableCell>
                     <TableCell><StarRating rating={review.rating} /></TableCell>
                     <TableCell>
@@ -486,11 +479,7 @@ export function ReviewsPage() {
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <h3 className="font-semibold text-gray-900 mb-3">Thông tin buổi phỏng vấn</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Vòng phỏng vấn</p>
-                      <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.round || 'N/A'}</p>
-                    </div>
-                    <div>
+                                        <div>
                       <p className="text-sm text-gray-600">Người phỏng vấn</p>
                       <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.interviewer || 'N/A'}</p>
                     </div>
