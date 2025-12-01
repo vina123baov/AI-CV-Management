@@ -113,7 +113,7 @@ export function InterviewsPage() {
     const interviewStart = new Date(interview.interview_date);
 
     // Nếu trạng thái đã là các trạng thái "kết thúc", giữ nguyên
-    if (interview.status === 'Hoàn thành' || interview.status === 'Đã hủy' || interview.status === 'Đang đánh giá') {
+    if (interview.status === 'Hoàn thành' || interview.status === 'Đã hủy') {
       return interview.status;
     }
 
@@ -437,14 +437,14 @@ export function InterviewsPage() {
         .from('cv_interviews')
         .update({
           end_time: now.toISOString(),
-          status: 'Đang đánh giá'
+          status: 'Đang chờ đánh giá'
         })
         .eq('id', interview.id);
 
       if (error) throw error;
       
       // Update local state quickly
-      setInterviews(prev => prev.map(i => i.id === interview.id ? { ...i, status: 'Đang đánh giá', end_time: now.toISOString() } : i));
+      setInterviews(prev => prev.map(i => i.id === interview.id ? { ...i, status: 'Đang chờ đánh giá', end_time: now.toISOString() } : i));
 
       alert('Buổi phỏng vấn đã được kết thúc và chuyển sang trạng thái chờ đánh giá!');
     } catch (error) {
@@ -553,8 +553,6 @@ export function InterviewsPage() {
         return 'bg-orange-100 text-orange-700 hover:bg-orange-100';
       case 'Đang phỏng vấn':
         return 'bg-blue-100 text-blue-700 hover:bg-blue-100';
-      case 'Đang đánh giá':
-        return 'bg-indigo-100 text-indigo-700 hover:bg-indigo-100';
       case 'Đang chờ đánh giá':
         return 'bg-purple-100 text-purple-700 hover:bg-purple-100';
       case 'Đã hủy':
@@ -672,7 +670,6 @@ export function InterviewsPage() {
             <SelectItem value="all">Tất cả trạng thái</SelectItem>
             <SelectItem value="Đang chờ">Đang chờ</SelectItem>
             <SelectItem value="Đang phỏng vấn">Đang phỏng vấn</SelectItem>
-            <SelectItem value="Đang đánh giá">Đang đánh giá</SelectItem>
             <SelectItem value="Đang chờ đánh giá">Đang chờ đánh giá</SelectItem>
             <SelectItem value="Hoàn thành">Hoàn thành</SelectItem>
             <SelectItem value="Đã hủy">Đã hủy</SelectItem>
