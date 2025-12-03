@@ -500,7 +500,7 @@ export function InterviewsPage() {
     }
   };
 
-  // Hủy lịch
+  // Hủy lịch - Chuyển sang trạng thái "Đã hủy"
   const handleDelete = async (interview: Interview) => {
     if (!confirm(`Bạn có chắc muốn hủy lịch phỏng vấn với ${interview.cv_candidates?.full_name}?`)) {
       return;
@@ -510,16 +510,19 @@ export function InterviewsPage() {
     try {
       const { error } = await supabase
         .from('cv_interviews')
-        .delete()
+        .update({ status: 'Đã hủy' })
         .eq('id', interview.id);
 
       if (error) throw error;
 
-      setInterviews(prev => prev.filter(i => i.id !== interview.id));
+      // Cập nhật state local
+      setInterviews(prev => prev.map(i => 
+        i.id === interview.id ? { ...i, status: 'Đã hủy' } : i
+      ));
 
       alert('Đã hủy lịch phỏng vấn thành công!');
     } catch (error) {
-      console.error('Error deleting interview:', error);
+      console.error('Error cancelling interview:', error);
       alert('Có lỗi xảy ra khi hủy lịch phỏng vấn!');
     } finally {
       setSubmitting(false);
@@ -973,7 +976,7 @@ const handleOpenReviewForm = (interview: Interview) => {
                             </DropdownMenuItem>
   
                             {/* ✅ NẾU HOÀN THÀNH - Chỉ có "Xem chi tiết" */}
-                            {interview.status !== 'Hoàn thành' && (
+                            {interview.status !== 'Hoàn thành' && interview.status !== 'Đã hủy' && (
                               <>
                                 {/* Chỉnh sửa - Chỉ khi Đang chờ */}
                                 {interview.status === 'Đang chờ' && (
