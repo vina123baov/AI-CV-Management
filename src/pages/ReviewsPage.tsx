@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { RefreshCw, FileText, Star, TrendingUp, MoreHorizontal, X } from "lucide-react"
+import { RefreshCw, FileText, Star, TrendingUp, MoreHorizontal, X,AlertTriangle } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -84,7 +84,7 @@ export function ReviewsPage() {
   const [newNote, setNewNote] = useState('');
   const [reviewOutcome, setReviewOutcome] = useState('Vòng tiếp theo'); // From V1
   const [submitting, setSubmitting] = useState(false);
-
+  const [newOutcome, setNewOutcome] = useState('Vòng tiếp theo');
   useEffect(() => {
     getReviews();
   }, []);
@@ -183,51 +183,76 @@ export function ReviewsPage() {
   };
 
   // Nộp đánh giá mới (From V1 Logic)
-  const handleSubmitNewReview = async () => {
-    if (!selectedPendingInterview || newRating === 0) {
-      alert('Vui lòng chọn số sao đánh giá!');
-      return;
-    }
+// Tìm đoạn code này trong ReviewsPage.tsx (khoảng dòng 150-180)
+const handleSubmitNewReview = async () => {
+  if (!selectedPendingInterview || newRating === 0) {
+    alert('Vui lòng chọn số sao đánh giá!');
+    return;
+  }
 
-    setSubmitting(true);
-    try {
-      // 1. Tạo review mới
-      const { error: reviewError } = await supabase
-        .from('cv_interview_reviews')
-        .insert([{
-          interview_id: selectedPendingInterview.id,
-          rating: newRating,
-          notes: newNote,
-          outcome: reviewOutcome
-        }]);
+  setSubmitting(true);
+  try {
+    // 1. Tạo review mới
+    const { error: reviewError } = await supabase
+      .from('cv_interview_reviews')
+      .insert([{
+        interview_id: selectedPendingInterview.id,
+        rating: newRating,
+        notes: newNote,
+        outcome: reviewOutcome
+      }]);
 
-      if (reviewError) throw reviewError;
+    if (reviewError) throw reviewError;
 
-      // 2. Cập nhật trạng thái interview thành "Hoàn thành"
-      const { error: updateError } = await supabase
+    // 2. Cập nhật trạng thái interview thành "Hoàn thành"
+    const { error: updateError } = await supabase
+      .from('cv_interviews')
+      .update({ status: 'Hoàn thành' })
+      .eq('id', selectedPendingInterview.id);
+
+    if (updateError) throw updateError;
+
+    // ✅ 3. CẬP NHẬT TRẠNG THÁI ỨNG VIÊN DỰA TRÊN KẾT QUẢ ĐÁNH GIÁ
+    if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
+      // Lấy candidate_id từ interview
+      const { data: interviewData } = await supabase
         .from('cv_interviews')
-        .update({ status: 'Hoàn thành' })
-        .eq('id', selectedPendingInterview.id);
+        .select('candidate_id')
+        .eq('id', selectedPendingInterview.id)
+        .single();
 
-      if (updateError) throw updateError;
+      if (interviewData?.candidate_id) {
+        const newCandidateStatus = reviewOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+        
+        const { error: candidateUpdateError } = await supabase
+          .from('cv_candidates')
+          .update({ status: newCandidateStatus })
+          .eq('id', interviewData.candidate_id);
 
-      // 3. Refresh dữ liệu
-      await getReviews();
-
-      // 4. Đóng dialog và reset form
-      setIsNewReviewDialogOpen(false);
-      setSelectedPendingInterview(null);
-      setNewRating(0);
-      setNewNote('');
-      setReviewOutcome('Vòng tiếp theo');
-
-      alert('Đánh giá đã được lưu thành công!');
-    } catch (error) {
-      console.error('Error submitting review:', error);
-      alert('Có lỗi xảy ra khi lưu đánh giá!');
-    } finally {
-      setSubmitting(false);
+        if (candidateUpdateError) {
+          console.error('Error updating candidate status:', candidateUpdateError);
+          // Không throw để không làm gián đoạn flow chính
+        }
+      }
     }
+
+    // 4. Refresh dữ liệu
+     await getReviews();
+
+    // 5. Đóng dialog và reset form
+     setIsNewReviewDialogOpen(false);
+     setSelectedPendingInterview(null);
+     setNewRating(0);
+     setNewNote('');
+     setReviewOutcome('Vòng tiếp theo');
+
+     alert('Đánh giá đã được lưu thành công!');
+   } catch (error) {
+     console.error('Error submitting review:', error);
+     alert('Có lỗi xảy ra khi lưu đánh giá!');
+   } finally {
+     setSubmitting(false);
+   }
   };
 
   // Đánh giá lại (Edit Review)
@@ -235,47 +260,72 @@ export function ReviewsPage() {
     setSelectedReview(review);
     setNewRating(review.rating);
     setNewNote(review.notes || '');
+    setNewOutcome(review.outcome);
     setIsReratingDialogOpen(true);
   };
 
   // Submit đánh giá lại (Merged V1 & V2)
   const handleSubmitRerating = async () => {
-    if (!selectedReview || newRating === 0) {
-      alert('Vui lòng chọn số sao đánh giá!');
-      return;
+  if (!selectedReview || newRating === 0) {
+    alert('Vui lòng chọn số sao đánh giá!');
+    return;
+  }
+
+  setSubmitting(true);
+  try {
+    const oldOutcome = selectedReview.outcome;
+
+    // 1. Update review
+    const { data, error } = await supabase
+      .from('cv_interview_reviews')
+      .update({ 
+        rating: newRating,
+        notes: newNote,
+        outcome: newOutcome,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedReview.id)
+      .select();
+
+    if (error) throw error;
+
+    // ✅ 2. CẬP NHẬT TRẠNG THÁI ỨNG VIÊN NẾU OUTCOME THAY ĐỔI
+    if (oldOutcome !== newOutcome && (newOutcome === 'Đạt' || newOutcome === 'Không đạt')) {
+      if (selectedReview.cv_interviews?.cv_candidates) {
+        // Lấy candidate_id
+        const { data: interviewData } = await supabase
+          .from('cv_interviews')
+          .select('candidate_id')
+          .eq('id', selectedReview.cv_interviews.id)
+          .single();
+
+        if (interviewData?.candidate_id) {
+          const newCandidateStatus = newOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+          
+          await supabase
+            .from('cv_candidates')
+            .update({ status: newCandidateStatus })
+            .eq('id', interviewData.candidate_id);
+        }
+      }
     }
 
-    setSubmitting(true);
-    try {
-      // ✅ MERGED: Update rating, notes AND updated_at timestamp (From V2)
-      const { data, error } = await supabase
-        .from('cv_interview_reviews')
-        .update({ 
-          rating: newRating,
-          notes: newNote,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedReview.id)
-        .select();
+    await getReviews();
 
-      if (error) throw error;
-
-      // Refresh data
-      await getReviews();
-
-      setIsReratingDialogOpen(false);
-      setSelectedReview(null);
-      setNewRating(0);
-      setNewNote('');
-      
-      alert('Cập nhật đánh giá thành công!');
-    } catch (error: any) {
-      console.error('Error updating rating:', error);
-      alert(`Có lỗi xảy ra: ${error.message || 'Không thể cập nhật đánh giá'}`);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    setIsReratingDialogOpen(false);
+    setSelectedReview(null);
+    setNewRating(0);
+    setNewNote('');
+    setNewOutcome('Vòng tiếp theo');
+    
+    alert('Cập nhật đánh giá thành công!');
+  } catch (error: any) {
+    console.error('Error updating rating:', error);
+    alert(`Có lỗi xảy ra: ${error.message || 'Không thể cập nhật đánh giá'}`);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 space-y-6">
@@ -656,7 +706,66 @@ export function ReviewsPage() {
                     </span>
                   </div>
                 </div>
-
+                {/* Kết quả mới */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">
+                    Kết quả <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={newOutcome}
+                    onValueChange={(value) => setNewOutcome(value)}
+                  >
+                    <SelectTrigger className="w-full bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
+                      <SelectItem value="Vòng tiếp theo">
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-600">●</span>
+                          <span>Vòng tiếp theo</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600">✓</span>
+                          <span>Đạt</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Không đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-red-600">✕</span>
+                          <span>Không đạt</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+  
+                  {/* Thông báo cảnh báo nếu chọn Đạt/Không đạt */}
+                  {(newOutcome === 'Đạt' || newOutcome === 'Không đạt') && (
+                    <div className={`p-3 rounded-lg border-2 flex items-start gap-2 ${
+                      newOutcome === 'Đạt' 
+                         ? 'bg-green-50 border-green-300' 
+                         : 'bg-red-50 border-red-300'
+                    }`}>
+                      <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                        newOutcome === 'Đạt' ? 'text-green-600' : 'text-red-600'
+                    }`} />
+                    <div className={`text-sm ${
+                      newOutcome === 'Đạt' ? 'text-green-900' : 'text-red-900'
+                    }`}>
+                      <p className="font-semibold mb-1">
+                        {newOutcome === 'Đạt' 
+                          ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
+                          : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
+                        }
+                      </p>
+                      <p className="text-xs opacity-90">
+                         Khi bạn lưu đánh giá này, hệ thống sẽ tự động cập nhật trạng thái ứng viên trong danh sách Quản lý ứng viên.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
                 {/* Ghi chú mới */}
                 <div className="space-y-3">
                   <label className="text-sm font-medium">
