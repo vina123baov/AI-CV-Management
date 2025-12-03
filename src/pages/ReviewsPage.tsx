@@ -1,11 +1,13 @@
 // src/pages/ReviewsPage.tsx
 "use client"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { RefreshCw, FileText, Star, TrendingUp, MoreHorizontal, X,AlertTriangle } from "lucide-react"
+// ✅ ADDED: AlertTriangle
+import { RefreshCw, FileText, Star, TrendingUp, MoreHorizontal, X, AlertTriangle } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -22,17 +24,17 @@ function StarRating({ rating }: { rating: number }) {
   )
 }
 
-// Định nghĩa kiểu dữ liệu cho một 'review' từ database
+// --- Interfaces (Merged) ---
+
 interface Review {
   id: string;
   rating: number;
   outcome: string;
   notes: string;
   created_at: string;
-  updated_at?: string; // From V2
+  updated_at?: string; // Lấy từ V2 để theo dõi chỉnh sửa
   cv_interviews: {
     id: string;
-    round: string;
     interviewer: string;
     interview_date: string;
     duration: string;
@@ -47,11 +49,9 @@ interface Review {
   } | null;
 }
 
-// Định nghĩa kiểu dữ liệu cho interview đang chờ đánh giá (From V1)
 interface PendingInterview {
   id: string;
   interview_date: string;
-  round: string;
   interviewer: string;
   duration: string;
   location: string;
@@ -65,30 +65,31 @@ interface PendingInterview {
 }
 
 export function ReviewsPage() {
+  // --- States ---
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [pendingInterviews, setPendingInterviews] = useState<PendingInterview[]>([]); // From V1
+  const [pendingInterviews, setPendingInterviews] = useState<PendingInterview[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalReviews: 0, averageRating: 0, recommendationRate: 0 });
   
   // Dialog States
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isReratingDialogOpen, setIsReratingDialogOpen] = useState(false);
-  const [isNewReviewDialogOpen, setIsNewReviewDialogOpen] = useState(false); // From V1
+  const [isNewReviewDialogOpen, setIsNewReviewDialogOpen] = useState(false);
   
   // Data Selection States
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
-  const [selectedPendingInterview, setSelectedPendingInterview] = useState<PendingInterview | null>(null); // From V1
+  const [selectedPendingInterview, setSelectedPendingInterview] = useState<PendingInterview | null>(null);
   
   // Form States
   const [newRating, setNewRating] = useState(0);
   const [newNote, setNewNote] = useState('');
-  const [reviewOutcome, setReviewOutcome] = useState('Vòng tiếp theo'); // From V1
+  const [reviewOutcome, setReviewOutcome] = useState('Đạt');
   const [submitting, setSubmitting] = useState(false);
-  const [newOutcome, setNewOutcome] = useState('Vòng tiếp theo');
-  useEffect(() => {
+useEffect(() => {
     getReviews();
   }, []);
 
+  // --- Data Fetching (Merged Logic) ---
   async function getReviews() {
     setLoading(true);
 
@@ -107,13 +108,12 @@ export function ReviewsPage() {
       `)
       .order('created_at', { ascending: false });
 
-    // 2. Get pending interviews (From V1 Logic)
+    // 2. Get pending interviews
     const { data: pendingData, error: pendingError } = await supabase
       .from('cv_interviews')
       .select(`
         id,
         interview_date,
-        round,
         interviewer,
         duration,
         location,
@@ -123,18 +123,17 @@ export function ReviewsPage() {
           cv_jobs ( title )
         )
       `)
-      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá']) // Lấy các interview cần đánh giá
+      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá'])
       .order('interview_date', { ascending: false });
 
     if (reviewData) {
-      // ✅ MERGED LOGIC FROM V2: Unique Reviews (Chỉ lấy review mới nhất cho mỗi interview)
+      // ✅ LOGIC V2: Unique Reviews
       const uniqueReviews = (reviewData as Review[]).reduce((acc: Review[], review: Review) => {
         const existingIndex = acc.findIndex((r: Review) => r.cv_interviews?.id === review.cv_interviews?.id);
         
         if (existingIndex === -1) {
           acc.push(review);
         } else {
-          // Keep the latest one
           const existingDate = new Date(acc[existingIndex].created_at);
           const currentDate = new Date(review.created_at);
           if (currentDate > existingDate) {
@@ -149,7 +148,7 @@ export function ReviewsPage() {
       // Calculate Stats
       const total = uniqueReviews.length;
       const sumOfRatings = uniqueReviews.reduce((sum, review) => sum + review.rating, 0);
-      const recommendedCount = uniqueReviews.filter(review => review.outcome === 'Vòng tiếp theo' || review.outcome === 'Đạt').length;
+      const recommendedCount = uniqueReviews.filter(review => review.outcome === 'Đạt').length;
 
       setStats({
         totalReviews: total,
@@ -167,140 +166,133 @@ export function ReviewsPage() {
     setLoading(false);
   }
 
+  // --- Handlers ---
+
   // Hiển thị chi tiết
   const handleViewDetail = (review: Review) => {
     setSelectedReview(review);
     setIsDetailDialogOpen(true);
   };
 
-  // Mở form đánh giá cho interview đang chờ (From V1)
+  // Mở form đánh giá cho interview đang chờ
   const handleCreateReview = (interview: PendingInterview) => {
     setSelectedPendingInterview(interview);
     setIsNewReviewDialogOpen(true);
     setNewRating(0);
     setNewNote('');
-    setReviewOutcome('Vòng tiếp theo');
+    setReviewOutcome('Đạt');
   };
 
-  // Nộp đánh giá mới (From V1 Logic)
-// Tìm đoạn code này trong ReviewsPage.tsx (khoảng dòng 150-180)
-const handleSubmitNewReview = async () => {
-  if (!selectedPendingInterview || newRating === 0) {
-    alert('Vui lòng chọn số sao đánh giá!');
-    return;
-  }
-
-  setSubmitting(true);
-  try {
-    // 1. Tạo review mới
-    const { error: reviewError } = await supabase
-      .from('cv_interview_reviews')
-      .insert([{
-        interview_id: selectedPendingInterview.id,
-        rating: newRating,
-        notes: newNote,
-        outcome: reviewOutcome
-      }]);
-
-    if (reviewError) throw reviewError;
-
-    // 2. Cập nhật trạng thái interview thành "Hoàn thành"
-    const { error: updateError } = await supabase
-      .from('cv_interviews')
-      .update({ status: 'Hoàn thành' })
-      .eq('id', selectedPendingInterview.id);
-
-    if (updateError) throw updateError;
-
-    // ✅ 3. CẬP NHẬT TRẠNG THÁI ỨNG VIÊN DỰA TRÊN KẾT QUẢ ĐÁNH GIÁ
-    if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
-      // Lấy candidate_id từ interview
-      const { data: interviewData } = await supabase
-        .from('cv_interviews')
-        .select('candidate_id')
-        .eq('id', selectedPendingInterview.id)
-        .single();
-
-      if (interviewData?.candidate_id) {
-        const newCandidateStatus = reviewOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
-        
-        const { error: candidateUpdateError } = await supabase
-          .from('cv_candidates')
-          .update({ status: newCandidateStatus })
-          .eq('id', interviewData.candidate_id);
-
-        if (candidateUpdateError) {
-          console.error('Error updating candidate status:', candidateUpdateError);
-          // Không throw để không làm gián đoạn flow chính
-        }
-      }
+  // ✅ MERGED LOGIC: Nộp đánh giá mới + Update Candidate Status
+  const handleSubmitNewReview = async () => {
+if (!selectedPendingInterview || newRating === 0) {
+      alert('Vui lòng chọn số sao đánh giá!');
+      return;
     }
 
-    // 4. Refresh dữ liệu
-     await getReviews();
+    setSubmitting(true);
+    try {
+      // 1. Tạo review mới
+      const { error: reviewError } = await supabase
+        .from('cv_interview_reviews')
+        .insert([{
+          interview_id: selectedPendingInterview.id,
+          rating: newRating,
+          notes: newNote,
+          outcome: reviewOutcome
+        }]);
 
-    // 5. Đóng dialog và reset form
-     setIsNewReviewDialogOpen(false);
-     setSelectedPendingInterview(null);
-     setNewRating(0);
-     setNewNote('');
-     setReviewOutcome('Vòng tiếp theo');
+      if (reviewError) throw reviewError;
 
-     alert('Đánh giá đã được lưu thành công!');
-   } catch (error) {
-     console.error('Error submitting review:', error);
-     alert('Có lỗi xảy ra khi lưu đánh giá!');
-   } finally {
-     setSubmitting(false);
-   }
+      // 2. Cập nhật trạng thái interview thành "Hoàn thành"
+      const { error: updateError } = await supabase
+        .from('cv_interviews')
+        .update({ status: 'Hoàn thành' })
+        .eq('id', selectedPendingInterview.id);
+
+      if (updateError) throw updateError;
+
+      // ✅ 3. LOGIC TỪ VERSION 1: CẬP NHẬT TRẠNG THÁI ỨNG VIÊN
+      if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
+        const { data: interviewData } = await supabase
+          .from('cv_interviews')
+          .select('candidate_id')
+          .eq('id', selectedPendingInterview.id)
+          .single();
+
+        if (interviewData?.candidate_id) {
+          const newCandidateStatus = reviewOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+          
+          const { error: candidateUpdateError } = await supabase
+            .from('cv_candidates')
+            .update({ status: newCandidateStatus })
+            .eq('id', interviewData.candidate_id);
+
+          if (candidateUpdateError) {
+            console.error('Error updating candidate status:', candidateUpdateError);
+          }
+        }
+      }
+
+      // 4. Refresh dữ liệu
+      await getReviews();
+
+      // 5. Đóng dialog và reset form
+      setIsNewReviewDialogOpen(false);
+      setSelectedPendingInterview(null);
+      setNewRating(0);
+      setNewNote('');
+      setReviewOutcome('Đạt');
+
+      alert('Đánh giá đã được lưu thành công!');
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      alert('Có lỗi xảy ra khi lưu đánh giá!');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Đánh giá lại (Edit Review)
+  // Mở Dialog Đánh giá lại
   const handleRerating = (review: Review) => {
     setSelectedReview(review);
     setNewRating(review.rating);
     setNewNote(review.notes || '');
-    setNewOutcome(review.outcome);
+    setReviewOutcome(review.outcome); // Set outcome hiện tại
     setIsReratingDialogOpen(true);
   };
 
-  // Submit đánh giá lại (Merged V1 & V2)
+  // ✅ MERGED LOGIC: Submit đánh giá lại + Update Candidate Status
   const handleSubmitRerating = async () => {
-  if (!selectedReview || newRating === 0) {
-    alert('Vui lòng chọn số sao đánh giá!');
-    return;
-  }
+    if (!selectedReview || newRating === 0) {
+      alert('Vui lòng chọn số sao đánh giá!');
+      return;
+    }
 
-  setSubmitting(true);
-  try {
-    const oldOutcome = selectedReview.outcome;
+    setSubmitting(true);
+    try {
+      // ✅ 1. Update review
+      const { error } = await supabase
+        .from('cv_interview_reviews')
+        .update({ 
+          rating: newRating,
+          notes: newNote,
+          outcome: reviewOutcome,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedReview.id);
+if (error) throw error;
 
-    // 1. Update review
-    const { data, error } = await supabase
-      .from('cv_interview_reviews')
-      .update({ 
-        rating: newRating,
-        notes: newNote,
-        outcome: newOutcome,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedReview.id)
-      .select();
-
-    if (error) throw error;
-
-    // ✅ 2. CẬP NHẬT TRẠNG THÁI ỨNG VIÊN NẾU OUTCOME THAY ĐỔI
-    if (oldOutcome !== newOutcome && (newOutcome === 'Đạt' || newOutcome === 'Không đạt')) {
-      if (selectedReview.cv_interviews?.cv_candidates) {
-        // Lấy candidate_id
+      // ✅ 2. LOGIC TỪ VERSION 1: CẬP NHẬT TRẠNG THÁI ỨNG VIÊN (Nếu outcome thay đổi)
+      if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
         const { data: interviewData } = await supabase
           .from('cv_interviews')
           .select('candidate_id')
-          .eq('id', selectedReview.cv_interviews.id)
+          .eq('id', selectedReview.cv_interviews?.id)
           .single();
 
         if (interviewData?.candidate_id) {
-          const newCandidateStatus = newOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+          const newCandidateStatus = reviewOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
           
           await supabase
             .from('cv_candidates')
@@ -308,24 +300,23 @@ const handleSubmitNewReview = async () => {
             .eq('id', interviewData.candidate_id);
         }
       }
+
+      // Refresh data
+      await getReviews();
+
+      setIsReratingDialogOpen(false);
+      setSelectedReview(null);
+      setNewRating(0);
+      setNewNote('');
+      
+      alert('Cập nhật đánh giá thành công!');
+    } catch (error: any) {
+      console.error('Error updating rating:', error);
+      alert(`Có lỗi xảy ra: ${error.message || 'Không thể cập nhật đánh giá'}`);
+    } finally {
+      setSubmitting(false);
     }
-
-    await getReviews();
-
-    setIsReratingDialogOpen(false);
-    setSelectedReview(null);
-    setNewRating(0);
-    setNewNote('');
-    setNewOutcome('Vòng tiếp theo');
-    
-    alert('Cập nhật đánh giá thành công!');
-  } catch (error: any) {
-    console.error('Error updating rating:', error);
-    alert(`Có lỗi xảy ra: ${error.message || 'Không thể cập nhật đánh giá'}`);
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 space-y-6">
@@ -369,7 +360,7 @@ const handleSubmitNewReview = async () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Tỷ lệ khuyên nghị</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground"/>
+<TrendingUp className="h-4 w-4 text-muted-foreground"/>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.recommendationRate.toFixed(0)}%</div>
@@ -377,7 +368,7 @@ const handleSubmitNewReview = async () => {
         </Card>
       </div>
 
-      {/* ✅ MERGED: Pending Reviews Section (From V1) */}
+      {/* Pending Reviews Section */}
       {pendingInterviews.length > 0 && (
         <Card>
           <CardHeader>
@@ -392,7 +383,6 @@ const handleSubmitNewReview = async () => {
                 <TableRow>
                   <TableHead>Ứng viên</TableHead>
                   <TableHead>Vị trí</TableHead>
-                  <TableHead>Vòng</TableHead>
                   <TableHead>Người PV</TableHead>
                   <TableHead>Ngày PV</TableHead>
                   <TableHead>Thao tác</TableHead>
@@ -403,7 +393,6 @@ const handleSubmitNewReview = async () => {
                   <TableRow key={interview.id}>
                     <TableCell className="font-medium">{interview.cv_candidates?.full_name || 'N/A'}</TableCell>
                     <TableCell>{interview.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
-                    <TableCell>{interview.round}</TableCell>
                     <TableCell>{interview.interviewer}</TableCell>
                     <TableCell>
                       {new Date(interview.interview_date).toLocaleString('vi-VN', {
@@ -442,7 +431,6 @@ const handleSubmitNewReview = async () => {
               <TableRow>
                 <TableHead>Ứng viên</TableHead>
                 <TableHead>Vị trí</TableHead>
-                <TableHead>Vòng</TableHead>
                 <TableHead>Người PV</TableHead>
                 <TableHead>Ngày PV</TableHead>
                 <TableHead>Đánh giá</TableHead>
@@ -451,21 +439,22 @@ const handleSubmitNewReview = async () => {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center h-24">Đang tải dữ liệu...</TableCell>
+<TableRow>
+                  <TableCell colSpan={6} className="text-center h-24">Đang tải dữ liệu...</TableCell>
                 </TableRow>
               ) : reviews.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-24">Chưa có đánh giá nào</TableCell>
+                  <TableCell colSpan={6} className="text-center h-24">Chưa có đánh giá nào</TableCell>
                 </TableRow>
               ) : (
                 reviews.map((review) => (
                   <TableRow key={review.id}>
                     <TableCell className="font-medium">{review.cv_interviews?.cv_candidates?.full_name || 'N/A'}</TableCell>
                     <TableCell>{review.cv_interviews?.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
-                    <TableCell>{review.cv_interviews?.round || 'N/A'}</TableCell>
                     <TableCell>{review.cv_interviews?.interviewer || 'N/A'}</TableCell>
-                    <TableCell>{review.cv_interviews ? new Date(review.cv_interviews.interview_date).toLocaleDateString('vi-VN') : 'N/A'}</TableCell>
+                    <TableCell>
+                      {review.cv_interviews ? new Date(review.cv_interviews.interview_date).toLocaleDateString('vi-VN') : 'N/A'}
+                    </TableCell>
                     <TableCell><StarRating rating={review.rating} /></TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -506,7 +495,7 @@ const handleSubmitNewReview = async () => {
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
                 <h2 className="text-xl font-semibold flex items-center gap-2">
                   <Star className="w-5 h-5 text-yellow-500" />
-                  Chi tiết đánh giá phỏng vấn
+Chi tiết đánh giá phỏng vấn
                 </h2>
                 <button
                   onClick={() => setIsDetailDialogOpen(false)}
@@ -536,11 +525,7 @@ const handleSubmitNewReview = async () => {
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <h3 className="font-semibold text-gray-900 mb-3">Thông tin buổi phỏng vấn</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Vòng phỏng vấn</p>
-                      <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.round || 'N/A'}</p>
-                    </div>
-                    <div>
+                      <div>
                       <p className="text-sm text-gray-600">Người phỏng vấn</p>
                       <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.interviewer || 'N/A'}</p>
                     </div>
@@ -565,7 +550,7 @@ const handleSubmitNewReview = async () => {
                       <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.format || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Địa điểm</p>
+<p className="text-sm text-gray-600">Địa điểm</p>
                       <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.location || 'Chưa có thông tin'}</p>
                     </div>
                   </div>
@@ -585,7 +570,6 @@ const handleSubmitNewReview = async () => {
                     <div>
                       <p className="text-sm text-yellow-700 mb-1">Kết quả</p>
                       <Badge className={
-                        selectedReview.outcome === 'Vòng tiếp theo' ? 'bg-blue-100 text-blue-700' :
                         selectedReview.outcome === 'Đạt' ? 'bg-green-100 text-green-700' :
                         'bg-red-100 text-red-700'
                       }>
@@ -633,7 +617,7 @@ const handleSubmitNewReview = async () => {
             onClick={() => {
               setIsReratingDialogOpen(false);
               setNewRating(0);
-              setNewNote('');
+setNewNote('');
             }}
           />
           
@@ -691,7 +675,7 @@ const handleSubmitNewReview = async () => {
                         type="button"
                         onClick={() => setNewRating(star)}
                         className="transition-transform hover:scale-110"
-                      >
+>
                         <Star 
                           className={`w-10 h-10 ${
                             star <= newRating 
@@ -706,25 +690,20 @@ const handleSubmitNewReview = async () => {
                     </span>
                   </div>
                 </div>
-                {/* Kết quả mới */}
+
+                {/* Kết quả mới (Updated UI from V1) */}
                 <div className="space-y-3">
                   <label className="text-sm font-medium">
                     Kết quả <span className="text-red-500">*</span>
                   </label>
                   <Select
-                    value={newOutcome}
-                    onValueChange={(value) => setNewOutcome(value)}
+                    value={reviewOutcome}
+                    onValueChange={(value) => setReviewOutcome(value)}
                   >
-                    <SelectTrigger className="w-full bg-white">
+                    <SelectTrigger className="bg-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                      <SelectItem value="Vòng tiếp theo">
-                        <div className="flex items-center gap-2">
-                          <span className="text-blue-600">●</span>
-                          <span>Vòng tiếp theo</span>
-                        </div>
-                      </SelectItem>
                       <SelectItem value="Đạt">
                         <div className="flex items-center gap-2">
                           <span className="text-green-600">✓</span>
@@ -739,40 +718,41 @@ const handleSubmitNewReview = async () => {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-  
-                  {/* Thông báo cảnh báo nếu chọn Đạt/Không đạt */}
-                  {(newOutcome === 'Đạt' || newOutcome === 'Không đạt') && (
+
+                  {/* Thông báo cảnh báo (Feature V1) */}
+                  {(reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') && (
                     <div className={`p-3 rounded-lg border-2 flex items-start gap-2 ${
-                      newOutcome === 'Đạt' 
-                         ? 'bg-green-50 border-green-300' 
-                         : 'bg-red-50 border-red-300'
+                      reviewOutcome === 'Đạt' 
+                          ? 'bg-green-50 border-green-300' 
+                          : 'bg-red-50 border-red-300'
                     }`}>
                       <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                        newOutcome === 'Đạt' ? 'text-green-600' : 'text-red-600'
-                    }`} />
-                    <div className={`text-sm ${
-                      newOutcome === 'Đạt' ? 'text-green-900' : 'text-red-900'
-                    }`}>
-                      <p className="font-semibold mb-1">
-                        {newOutcome === 'Đạt' 
-                          ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
-                          : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
-                        }
-                      </p>
-                      <p className="text-xs opacity-90">
-                         Khi bạn lưu đánh giá này, hệ thống sẽ tự động cập nhật trạng thái ứng viên trong danh sách Quản lý ứng viên.
-                      </p>
+                        reviewOutcome === 'Đạt' ? 'text-green-600' : 'text-red-600'
+                      }`} />
+                      <div className={`text-sm ${
+                        reviewOutcome === 'Đạt' ? 'text-green-900' : 'text-red-900'
+                      }`}>
+                        <p className="font-semibold mb-1">
+                          {reviewOutcome === 'Đạt' 
+                            ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
+                            : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
+}
+                        </p>
+                        <p className="text-xs opacity-90">
+                           Hệ thống sẽ tự động cập nhật trạng thái ứng viên khi bạn lưu đánh giá.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+
                 {/* Ghi chú mới */}
                 <div className="space-y-3">
                   <label className="text-sm font-medium">
                     Ghi chú đánh giá
                   </label>
                   <Textarea
-                    placeholder="Nhập ghi chú về đánh giá của bạn (ví dụ: kỹ năng cần cải thiện, điểm mạnh, lý do thay đổi đánh giá...)"
+                    placeholder="Nhập ghi chú về đánh giá của bạn..."
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
                     rows={5}
@@ -810,7 +790,7 @@ const handleSubmitNewReview = async () => {
         </>
       )}
 
-      {/* ✅ MERGED: New Review Dialog (From V1) */}
+      {/* ✅ New Review Dialog (Feature V1) */}
       {isNewReviewDialogOpen && selectedPendingInterview && (
         <>
           <div
@@ -821,7 +801,7 @@ const handleSubmitNewReview = async () => {
               setSelectedPendingInterview(null);
               setNewRating(0);
               setNewNote('');
-              setReviewOutcome('Vòng tiếp theo');
+              setReviewOutcome('Đạt');
             }}
           />
 
@@ -833,12 +813,12 @@ const handleSubmitNewReview = async () => {
                   Đánh giá buổi phỏng vấn
                 </h2>
                 <button
-                  onClick={() => {
+onClick={() => {
                     setIsNewReviewDialogOpen(false);
                     setSelectedPendingInterview(null);
                     setNewRating(0);
                     setNewNote('');
-                    setReviewOutcome('Vòng tiếp theo');
+                    setReviewOutcome('Đạt');
                   }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -867,10 +847,10 @@ const handleSubmitNewReview = async () => {
                         onClick={() => setNewRating(star)}
                         className="transition-transform hover:scale-110"
                       >
-                        <Star
+                        <Star 
                           className={`w-10 h-10 ${
-                            star <= newRating
-                              ? 'fill-yellow-400 text-yellow-400'
+                            star <= newRating 
+                              ? 'fill-yellow-400 text-yellow-400' 
                               : 'text-gray-300'
                           }`}
                         />
@@ -882,8 +862,8 @@ const handleSubmitNewReview = async () => {
                   </div>
                 </div>
 
-                {/* Outcome */}
-                <div className="space-y-2">
+                {/* Outcome (Updated UI from V1 with Warning) */}
+                <div className="space-y-3">
                   <label className="text-sm font-medium">
                     Kết quả <span className="text-red-500">*</span>
                   </label>
@@ -895,11 +875,46 @@ const handleSubmitNewReview = async () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                      <SelectItem value="Vòng tiếp theo">Vòng tiếp theo</SelectItem>
-                      <SelectItem value="Đạt">Đạt</SelectItem>
-                      <SelectItem value="Không đạt">Không đạt</SelectItem>
+                      <SelectItem value="Đạt">
+                        <div className="flex items-center gap-2">
+<span className="text-green-600">✓</span>
+                          <span>Đạt</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Không đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-red-600">✕</span>
+                          <span>Không đạt</span>
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
+
+                  {/* Thông báo cảnh báo (Feature V1) */}
+                  {(reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') && (
+                    <div className={`p-3 rounded-lg border-2 flex items-start gap-2 ${
+                      reviewOutcome === 'Đạt' 
+                          ? 'bg-green-50 border-green-300' 
+                          : 'bg-red-50 border-red-300'
+                    }`}>
+                      <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                        reviewOutcome === 'Đạt' ? 'text-green-600' : 'text-red-600'
+                      }`} />
+                      <div className={`text-sm ${
+                        reviewOutcome === 'Đạt' ? 'text-green-900' : 'text-red-900'
+                      }`}>
+                        <p className="font-semibold mb-1">
+                          {reviewOutcome === 'Đạt' 
+                            ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
+                            : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
+                          }
+                        </p>
+                        <p className="text-xs opacity-90">
+                           Khi bạn lưu đánh giá này, hệ thống sẽ tự động cập nhật trạng thái ứng viên.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Notes */}
@@ -916,20 +931,20 @@ const handleSubmitNewReview = async () => {
               </div>
 
               <div className="border-t px-6 py-4 flex justify-end gap-2">
-                <Button
-                  variant="outline"
+                <Button 
+                  variant="outline" 
                   onClick={() => {
                     setIsNewReviewDialogOpen(false);
                     setSelectedPendingInterview(null);
                     setNewRating(0);
                     setNewNote('');
-                    setReviewOutcome('Vòng tiếp theo');
+                    setReviewOutcome('Đạt');
                   }}
                   disabled={submitting}
                 >
-                  Hủy
+Hủy
                 </Button>
-                <Button
+                <Button 
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={handleSubmitNewReview}
                   disabled={submitting || newRating === 0}
