@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { RefreshCw, FileText, Star, TrendingUp, MoreHorizontal, X } from "lucide-react"
+// ✅ ADDED: AlertTriangle
+import { RefreshCw, FileText, Star, TrendingUp, MoreHorizontal, X, AlertTriangle } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -108,7 +109,7 @@ export function ReviewsPage() {
       `)
       .order('created_at', { ascending: false });
 
-    // 2. Get pending interviews (Sử dụng Filter của V1 - chính xác hơn cho các trạng thái chờ)
+    // 2. Get pending interviews
     const { data: pendingData, error: pendingError } = await supabase
       .from('cv_interviews')
       .select(`
@@ -123,18 +124,17 @@ export function ReviewsPage() {
           cv_jobs ( title )
         )
       `)
-      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá']) // Lấy cả 2 trạng thái có thể đánh giá
+      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá'])
       .order('interview_date', { ascending: false });
 
     if (reviewData) {
-      // ✅ LOGIC V2: Unique Reviews (Xử lý trùng lặp, giữ review mới nhất)
+      // ✅ LOGIC V2: Unique Reviews
       const uniqueReviews = (reviewData as Review[]).reduce((acc: Review[], review: Review) => {
         const existingIndex = acc.findIndex((r: Review) => r.cv_interviews?.id === review.cv_interviews?.id);
         
         if (existingIndex === -1) {
           acc.push(review);
         } else {
-          // Keep the latest one based on created_at
           const existingDate = new Date(acc[existingIndex].created_at);
           const currentDate = new Date(review.created_at);
           if (currentDate > existingDate) {
@@ -175,7 +175,7 @@ export function ReviewsPage() {
     setIsDetailDialogOpen(true);
   };
 
-  // Mở form đánh giá cho interview đang chờ (Logic V1)
+  // Mở form đánh giá cho interview đang chờ
   const handleCreateReview = (interview: PendingInterview) => {
     setSelectedPendingInterview(interview);
     setIsNewReviewDialogOpen(true);
@@ -184,7 +184,7 @@ export function ReviewsPage() {
     setReviewOutcome('Đạt');
   };
 
-  // Nộp đánh giá mới (Logic V1 - Insert & Update Status)
+  // ✅ MERGED LOGIC: Nộp đánh giá mới + Update Candidate Status
   const handleSubmitNewReview = async () => {
     if (!selectedPendingInterview || newRating === 0) {
       alert('Vui lòng chọn số sao đánh giá!');
@@ -213,10 +213,32 @@ export function ReviewsPage() {
 
       if (updateError) throw updateError;
 
-      // 3. Refresh dữ liệu
+      // ✅ 3. LOGIC TỪ VERSION 1: CẬP NHẬT TRẠNG THÁI ỨNG VIÊN
+      if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
+        const { data: interviewData } = await supabase
+          .from('cv_interviews')
+          .select('candidate_id')
+          .eq('id', selectedPendingInterview.id)
+          .single();
+
+        if (interviewData?.candidate_id) {
+          const newCandidateStatus = reviewOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+          
+          const { error: candidateUpdateError } = await supabase
+            .from('cv_candidates')
+            .update({ status: newCandidateStatus })
+            .eq('id', interviewData.candidate_id);
+
+          if (candidateUpdateError) {
+            console.error('Error updating candidate status:', candidateUpdateError);
+          }
+        }
+      }
+
+      // 4. Refresh dữ liệu
       await getReviews();
 
-      // 4. Đóng dialog và reset form
+      // 5. Đóng dialog và reset form
       setIsNewReviewDialogOpen(false);
       setSelectedPendingInterview(null);
       setNewRating(0);
@@ -237,10 +259,11 @@ export function ReviewsPage() {
     setSelectedReview(review);
     setNewRating(review.rating);
     setNewNote(review.notes || '');
+    setReviewOutcome(review.outcome); // Set outcome hiện tại
     setIsReratingDialogOpen(true);
   };
 
-  // Submit đánh giá lại (Logic V2 - Update timestamp)
+  // ✅ MERGED LOGIC: Submit đánh giá lại + Update Candidate Status
   const handleSubmitRerating = async () => {
     if (!selectedReview || newRating === 0) {
       alert('Vui lòng chọn số sao đánh giá!');
@@ -249,17 +272,36 @@ export function ReviewsPage() {
 
     setSubmitting(true);
     try {
-      // ✅ Update rating, notes VÀ updated_at timestamp
+      // ✅ 1. Update review
       const { error } = await supabase
         .from('cv_interview_reviews')
         .update({ 
           rating: newRating,
           notes: newNote,
+          outcome: reviewOutcome,
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedReview.id);
 
       if (error) throw error;
+
+      // ✅ 2. LOGIC TỪ VERSION 1: CẬP NHẬT TRẠNG THÁI ỨNG VIÊN (Nếu outcome thay đổi)
+      if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
+        const { data: interviewData } = await supabase
+          .from('cv_interviews')
+          .select('candidate_id')
+          .eq('id', selectedReview.cv_interviews?.id)
+          .single();
+
+        if (interviewData?.candidate_id) {
+          const newCandidateStatus = reviewOutcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+          
+          await supabase
+            .from('cv_candidates')
+            .update({ status: newCandidateStatus })
+            .eq('id', interviewData.candidate_id);
+        }
+      }
 
       // Refresh data
       await getReviews();
@@ -328,7 +370,7 @@ export function ReviewsPage() {
         </Card>
       </div>
 
-      {/* ✅ Pending Reviews Section (Feature V1) */}
+      {/* Pending Reviews Section */}
       {pendingInterviews.length > 0 && (
         <Card>
           <CardHeader>
@@ -651,6 +693,61 @@ export function ReviewsPage() {
                   </div>
                 </div>
 
+                {/* Kết quả mới (Updated UI from V1) */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">
+                    Kết quả <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={reviewOutcome}
+                    onValueChange={(value) => setReviewOutcome(value)}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
+                      <SelectItem value="Đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600">✓</span>
+                          <span>Đạt</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Không đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-red-600">✕</span>
+                          <span>Không đạt</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Thông báo cảnh báo (Feature V1) */}
+                  {(reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') && (
+                    <div className={`p-3 rounded-lg border-2 flex items-start gap-2 ${
+                      reviewOutcome === 'Đạt' 
+                          ? 'bg-green-50 border-green-300' 
+                          : 'bg-red-50 border-red-300'
+                    }`}>
+                      <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                        reviewOutcome === 'Đạt' ? 'text-green-600' : 'text-red-600'
+                      }`} />
+                      <div className={`text-sm ${
+                        reviewOutcome === 'Đạt' ? 'text-green-900' : 'text-red-900'
+                      }`}>
+                        <p className="font-semibold mb-1">
+                          {reviewOutcome === 'Đạt' 
+                            ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
+                            : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
+                          }
+                        </p>
+                        <p className="text-xs opacity-90">
+                           Hệ thống sẽ tự động cập nhật trạng thái ứng viên khi bạn lưu đánh giá.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Ghi chú mới */}
                 <div className="space-y-3">
                   <label className="text-sm font-medium">
@@ -752,10 +849,10 @@ export function ReviewsPage() {
                         onClick={() => setNewRating(star)}
                         className="transition-transform hover:scale-110"
                       >
-                        <Star
+                        <Star 
                           className={`w-10 h-10 ${
-                            star <= newRating
-                              ? 'fill-yellow-400 text-yellow-400'
+                            star <= newRating 
+                              ? 'fill-yellow-400 text-yellow-400' 
                               : 'text-gray-300'
                           }`}
                         />
@@ -767,8 +864,8 @@ export function ReviewsPage() {
                   </div>
                 </div>
 
-                {/* Outcome */}
-                <div className="space-y-2">
+                {/* Outcome (Updated UI from V1 with Warning) */}
+                <div className="space-y-3">
                   <label className="text-sm font-medium">
                     Kết quả <span className="text-red-500">*</span>
                   </label>
@@ -780,10 +877,46 @@ export function ReviewsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                      <SelectItem value="Đạt">Đạt</SelectItem>
-                      <SelectItem value="Không đạt">Không đạt</SelectItem>
+                      <SelectItem value="Đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600">✓</span>
+                          <span>Đạt</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Không đạt">
+                        <div className="flex items-center gap-2">
+                          <span className="text-red-600">✕</span>
+                          <span>Không đạt</span>
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
+
+                  {/* Thông báo cảnh báo (Feature V1) */}
+                  {(reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') && (
+                    <div className={`p-3 rounded-lg border-2 flex items-start gap-2 ${
+                      reviewOutcome === 'Đạt' 
+                          ? 'bg-green-50 border-green-300' 
+                          : 'bg-red-50 border-red-300'
+                    }`}>
+                      <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                        reviewOutcome === 'Đạt' ? 'text-green-600' : 'text-red-600'
+                      }`} />
+                      <div className={`text-sm ${
+                        reviewOutcome === 'Đạt' ? 'text-green-900' : 'text-red-900'
+                      }`}>
+                        <p className="font-semibold mb-1">
+                          {reviewOutcome === 'Đạt' 
+                            ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
+                            : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
+                          }
+                        </p>
+                        <p className="text-xs opacity-90">
+                           Khi bạn lưu đánh giá này, hệ thống sẽ tự động cập nhật trạng thái ứng viên.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Notes */}
@@ -800,8 +933,8 @@ export function ReviewsPage() {
               </div>
 
               <div className="border-t px-6 py-4 flex justify-end gap-2">
-                <Button
-                  variant="outline"
+                <Button 
+                  variant="outline" 
                   onClick={() => {
                     setIsNewReviewDialogOpen(false);
                     setSelectedPendingInterview(null);
@@ -813,7 +946,7 @@ export function ReviewsPage() {
                 >
                   Hủy
                 </Button>
-                <Button
+                <Button 
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={handleSubmitNewReview}
                   disabled={submitting || newRating === 0}

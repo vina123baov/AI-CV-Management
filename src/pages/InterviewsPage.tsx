@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CandidateAutoCompleteDual } from "@/components/CandidateAutoCompleteDual"
 
-// --- Interfaces ---
+// --- Interfaces (Giữ nguyên của Version 2) ---
 
 interface Candidate {
   id: string;
@@ -38,13 +38,13 @@ interface Interview {
   id: string;
   interview_date: string;
   interviewer: string;
-  // round: string; // Đã xóa
+  // round: string; // Đã xóa theo V2
   format: string;
   status: string;
   duration: string;
   location: string;
-  // end_time?: string; // Đã xóa (Logic thủ công V2)
-  job_id?: string; // Giữ lại để hiển thị vị trí logic V2
+  // end_time?: string; // Đã xóa theo V2
+  job_id?: string;
   cv_candidates: {
     full_name: string;
     cv_jobs: {
@@ -52,7 +52,7 @@ interface Interview {
       title: string;
     } | null;
   } | null;
-  cv_jobs?: { // Job riêng của buổi phỏng vấn (V2)
+  cv_jobs?: {
     id: string;
     title: string;
   } | null;
@@ -104,7 +104,7 @@ export function InterviewsPage() {
     notes: ""
   });
 
-  // Form state (Edit) - V1 Update (Bỏ Round)
+  // Form state (Edit) - V2 (Không Round)
   const [editFormData, setEditFormData] = useState({
     id: "",
     job_id: "",
@@ -126,7 +126,7 @@ export function InterviewsPage() {
 
   // --- Logic & Helpers ---
 
-  // ✅ LOGIC TRẠNG THÁI: 100% VERSION 1 (Tự động dựa trên thời gian)
+  // ✅ LOGIC TRẠNG THÁI: Merge từ V1 (để đảm bảo tính đúng đắn khi hủy/chờ đánh giá)
   const getInterviewStatus = (interview: Interview) => {
     const now = new Date();
     const interviewStart = new Date(interview.interview_date);
@@ -295,7 +295,7 @@ export function InterviewsPage() {
 
   // --- Actions ---
 
-  // Submit Create (Form V2 logic)
+  // Submit Create (V2 logic)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateInterviewDateTime()) return;
@@ -366,8 +366,7 @@ export function InterviewsPage() {
     setIsDetailDialogOpen(true);
   };
 
-  // ✅ LOGIC KẾT THÚC SỚM: 100% VERSION 1
-  // Chuyển sang "Đang đánh giá" và KHÔNG ghi đè end_time
+  // Logic Kết thúc sớm (Giống V1 - chuyển sang Đang đánh giá)
   const handleEndInterview = async (interview: Interview) => {
     if (!confirm(`Bạn có chắc muốn kết thúc sớm buổi phỏng vấn với ${interview.cv_candidates?.full_name}?`)) {
       return;
@@ -384,7 +383,7 @@ export function InterviewsPage() {
 
       if (error) throw error;
       
-      // Update local state: chuyển ngay sang 'Đang đánh giá'
+      // Update local state
       setInterviews(prev => prev.map(i => i.id === interview.id ? { ...i, status: 'Đang đánh giá' } : i));
 
       alert('Buổi phỏng vấn đã được kết thúc và chuyển sang trạng thái chờ đánh giá!');
@@ -396,7 +395,7 @@ export function InterviewsPage() {
     }
   };
 
-  // Submit Review (V1)
+  // Submit Review (V1 Logic)
   const handleSubmitReview = async () => {
     if (!selectedInterview || reviewData.rating === 0) {
       alert('Vui lòng chọn số sao đánh giá!');
@@ -435,23 +434,38 @@ export function InterviewsPage() {
     }
   };
 
+  // ✅ MERGED: Logic Hủy Lịch từ Version 1
+  // Thay vì delete (xóa hẳn), ta update status thành 'Đã hủy'
   const handleDelete = async (interview: Interview) => {
-    if (!confirm(`Bạn có chắc muốn hủy lịch phỏng vấn với ${interview.cv_candidates?.full_name}?`)) return;
+    if (!confirm(`Bạn có chắc muốn hủy lịch phỏng vấn với ${interview.cv_candidates?.full_name}?`)) {
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('cv_interviews').delete().eq('id', interview.id);
+      // Version 1 Logic: Update status instead of delete
+      const { error } = await supabase
+        .from('cv_interviews')
+        .update({ status: 'Đã hủy' })
+        .eq('id', interview.id);
+
       if (error) throw error;
-      setInterviews(prev => prev.filter(i => i.id !== interview.id));
+
+      // Update local state (map instead of filter)
+      setInterviews(prev => prev.map(i => 
+        i.id === interview.id ? { ...i, status: 'Đã hủy' } : i
+      ));
+
       alert('Đã hủy lịch phỏng vấn thành công!');
     } catch (error) {
-      console.error('Error deleting interview:', error);
+      console.error('Error cancelling interview:', error);
       alert('Có lỗi xảy ra khi hủy lịch phỏng vấn!');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // --- ACTIONS EDIT (V1 update bỏ round) ---
+  // --- ACTIONS EDIT (V2 Logic UI - Bỏ Round) ---
   const handleEditClick = (interview: Interview) => {
     const dt = new Date(interview.interview_date);
     const dateStr = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
@@ -637,7 +651,7 @@ export function InterviewsPage() {
             </div>
           </CardContent>
         </Card>
-        {/* ... Các card khác giữ nguyên ... */}
+        
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
@@ -804,7 +818,8 @@ export function InterviewsPage() {
                              Xem chi tiết
                             </DropdownMenuItem>
   
-                            {interview.status !== 'Hoàn thành' && (
+                            {/* ✅ MERGED UI: Ẩn các thao tác nếu đã Hoàn thành HOẶC Đã hủy */}
+                            {interview.status !== 'Hoàn thành' && interview.status !== 'Đã hủy' && (
                               <>
                                 {interview.status === 'Đang chờ' && (
                                   <DropdownMenuItem onClick={() => handleEditClick(interview)}>
@@ -833,8 +848,8 @@ export function InterviewsPage() {
                                  )}
       
                                 <DropdownMenuItem 
-                                   className="text-red-600"
-                                   onClick={() => handleDelete(interview)}
+                                  className="text-red-600"
+                                  onClick={() => handleDelete(interview)}
                                  >
                                    Hủy lịch
                                  </DropdownMenuItem>
