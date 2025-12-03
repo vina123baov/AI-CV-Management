@@ -1,5 +1,6 @@
 // src/pages/ReviewsPage.tsx
 "use client"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,14 +23,15 @@ function StarRating({ rating }: { rating: number }) {
   )
 }
 
-// Định nghĩa kiểu dữ liệu cho một 'review' từ database
+// --- Interfaces (Merged) ---
+
 interface Review {
   id: string;
   rating: number;
   outcome: string;
   notes: string;
   created_at: string;
-  updated_at?: string; // From V2
+  updated_at?: string; // Lấy từ V2 để theo dõi chỉnh sửa
   cv_interviews: {
     id: string;
     interviewer: string;
@@ -46,7 +48,6 @@ interface Review {
   } | null;
 }
 
-// Định nghĩa kiểu dữ liệu cho interview đang chờ đánh giá (From V1)
 interface PendingInterview {
   id: string;
   interview_date: string;
@@ -63,30 +64,32 @@ interface PendingInterview {
 }
 
 export function ReviewsPage() {
+  // --- States ---
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [pendingInterviews, setPendingInterviews] = useState<PendingInterview[]>([]); // From V1
+  const [pendingInterviews, setPendingInterviews] = useState<PendingInterview[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalReviews: 0, averageRating: 0, recommendationRate: 0 });
   
   // Dialog States
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isReratingDialogOpen, setIsReratingDialogOpen] = useState(false);
-  const [isNewReviewDialogOpen, setIsNewReviewDialogOpen] = useState(false); // From V1
+  const [isNewReviewDialogOpen, setIsNewReviewDialogOpen] = useState(false);
   
   // Data Selection States
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
-  const [selectedPendingInterview, setSelectedPendingInterview] = useState<PendingInterview | null>(null); // From V1
+  const [selectedPendingInterview, setSelectedPendingInterview] = useState<PendingInterview | null>(null);
   
   // Form States
   const [newRating, setNewRating] = useState(0);
   const [newNote, setNewNote] = useState('');
-  const [reviewOutcome, setReviewOutcome] = useState('Vòng tiếp theo'); // From V1
+  const [reviewOutcome, setReviewOutcome] = useState('Đạt');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     getReviews();
   }, []);
 
+  // --- Data Fetching (Merged Logic) ---
   async function getReviews() {
     setLoading(true);
 
@@ -105,7 +108,7 @@ export function ReviewsPage() {
       `)
       .order('created_at', { ascending: false });
 
-    // 2. Get pending interviews (From V1 Logic)
+    // 2. Get pending interviews (Sử dụng Filter của V1 - chính xác hơn cho các trạng thái chờ)
     const { data: pendingData, error: pendingError } = await supabase
       .from('cv_interviews')
       .select(`
@@ -120,18 +123,18 @@ export function ReviewsPage() {
           cv_jobs ( title )
         )
       `)
-      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá']) // Lấy các interview cần đánh giá
+      .in('status', ['Đang chờ đánh giá', 'Đang đánh giá']) // Lấy cả 2 trạng thái có thể đánh giá
       .order('interview_date', { ascending: false });
 
     if (reviewData) {
-      // ✅ MERGED LOGIC FROM V2: Unique Reviews (Chỉ lấy review mới nhất cho mỗi interview)
+      // ✅ LOGIC V2: Unique Reviews (Xử lý trùng lặp, giữ review mới nhất)
       const uniqueReviews = (reviewData as Review[]).reduce((acc: Review[], review: Review) => {
         const existingIndex = acc.findIndex((r: Review) => r.cv_interviews?.id === review.cv_interviews?.id);
         
         if (existingIndex === -1) {
           acc.push(review);
         } else {
-          // Keep the latest one
+          // Keep the latest one based on created_at
           const existingDate = new Date(acc[existingIndex].created_at);
           const currentDate = new Date(review.created_at);
           if (currentDate > existingDate) {
@@ -146,7 +149,7 @@ export function ReviewsPage() {
       // Calculate Stats
       const total = uniqueReviews.length;
       const sumOfRatings = uniqueReviews.reduce((sum, review) => sum + review.rating, 0);
-      const recommendedCount = uniqueReviews.filter(review => review.outcome === 'Vòng tiếp theo' || review.outcome === 'Đạt').length;
+      const recommendedCount = uniqueReviews.filter(review => review.outcome === 'Đạt').length;
 
       setStats({
         totalReviews: total,
@@ -164,22 +167,24 @@ export function ReviewsPage() {
     setLoading(false);
   }
 
+  // --- Handlers ---
+
   // Hiển thị chi tiết
   const handleViewDetail = (review: Review) => {
     setSelectedReview(review);
     setIsDetailDialogOpen(true);
   };
 
-  // Mở form đánh giá cho interview đang chờ (From V1)
+  // Mở form đánh giá cho interview đang chờ (Logic V1)
   const handleCreateReview = (interview: PendingInterview) => {
     setSelectedPendingInterview(interview);
     setIsNewReviewDialogOpen(true);
     setNewRating(0);
     setNewNote('');
-    setReviewOutcome('Vòng tiếp theo');
+    setReviewOutcome('Đạt');
   };
 
-  // Nộp đánh giá mới (From V1 Logic)
+  // Nộp đánh giá mới (Logic V1 - Insert & Update Status)
   const handleSubmitNewReview = async () => {
     if (!selectedPendingInterview || newRating === 0) {
       alert('Vui lòng chọn số sao đánh giá!');
@@ -216,7 +221,7 @@ export function ReviewsPage() {
       setSelectedPendingInterview(null);
       setNewRating(0);
       setNewNote('');
-      setReviewOutcome('Vòng tiếp theo');
+      setReviewOutcome('Đạt');
 
       alert('Đánh giá đã được lưu thành công!');
     } catch (error) {
@@ -227,7 +232,7 @@ export function ReviewsPage() {
     }
   };
 
-  // Đánh giá lại (Edit Review)
+  // Mở Dialog Đánh giá lại
   const handleRerating = (review: Review) => {
     setSelectedReview(review);
     setNewRating(review.rating);
@@ -235,7 +240,7 @@ export function ReviewsPage() {
     setIsReratingDialogOpen(true);
   };
 
-  // Submit đánh giá lại (Merged V1 & V2)
+  // Submit đánh giá lại (Logic V2 - Update timestamp)
   const handleSubmitRerating = async () => {
     if (!selectedReview || newRating === 0) {
       alert('Vui lòng chọn số sao đánh giá!');
@@ -244,16 +249,15 @@ export function ReviewsPage() {
 
     setSubmitting(true);
     try {
-      // ✅ MERGED: Update rating, notes AND updated_at timestamp (From V2)
-      const { data, error } = await supabase
+      // ✅ Update rating, notes VÀ updated_at timestamp
+      const { error } = await supabase
         .from('cv_interview_reviews')
         .update({ 
           rating: newRating,
           notes: newNote,
           updated_at: new Date().toISOString()
         })
-        .eq('id', selectedReview.id)
-        .select();
+        .eq('id', selectedReview.id);
 
       if (error) throw error;
 
@@ -324,7 +328,7 @@ export function ReviewsPage() {
         </Card>
       </div>
 
-      {/* ✅ MERGED: Pending Reviews Section (From V1) */}
+      {/* ✅ Pending Reviews Section (Feature V1) */}
       {pendingInterviews.length > 0 && (
         <Card>
           <CardHeader>
@@ -349,7 +353,7 @@ export function ReviewsPage() {
                   <TableRow key={interview.id}>
                     <TableCell className="font-medium">{interview.cv_candidates?.full_name || 'N/A'}</TableCell>
                     <TableCell>{interview.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
-                                        <TableCell>{interview.interviewer}</TableCell>
+                    <TableCell>{interview.interviewer}</TableCell>
                     <TableCell>
                       {new Date(interview.interview_date).toLocaleString('vi-VN', {
                         year: 'numeric',
@@ -407,8 +411,10 @@ export function ReviewsPage() {
                   <TableRow key={review.id}>
                     <TableCell className="font-medium">{review.cv_interviews?.cv_candidates?.full_name || 'N/A'}</TableCell>
                     <TableCell>{review.cv_interviews?.cv_candidates?.cv_jobs?.title || 'N/A'}</TableCell>
-                                        <TableCell>{review.cv_interviews?.interviewer || 'N/A'}</TableCell>
-                    <TableCell>{review.cv_interviews ? new Date(review.cv_interviews.interview_date).toLocaleDateString('vi-VN') : 'N/A'}</TableCell>
+                    <TableCell>{review.cv_interviews?.interviewer || 'N/A'}</TableCell>
+                    <TableCell>
+                      {review.cv_interviews ? new Date(review.cv_interviews.interview_date).toLocaleDateString('vi-VN') : 'N/A'}
+                    </TableCell>
                     <TableCell><StarRating rating={review.rating} /></TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -479,7 +485,7 @@ export function ReviewsPage() {
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <h3 className="font-semibold text-gray-900 mb-3">Thông tin buổi phỏng vấn</h3>
                   <div className="grid grid-cols-2 gap-4">
-                                        <div>
+                      <div>
                       <p className="text-sm text-gray-600">Người phỏng vấn</p>
                       <p className="font-medium text-gray-900">{selectedReview.cv_interviews?.interviewer || 'N/A'}</p>
                     </div>
@@ -524,7 +530,6 @@ export function ReviewsPage() {
                     <div>
                       <p className="text-sm text-yellow-700 mb-1">Kết quả</p>
                       <Badge className={
-                        selectedReview.outcome === 'Vòng tiếp theo' ? 'bg-blue-100 text-blue-700' :
                         selectedReview.outcome === 'Đạt' ? 'bg-green-100 text-green-700' :
                         'bg-red-100 text-red-700'
                       }>
@@ -652,7 +657,7 @@ export function ReviewsPage() {
                     Ghi chú đánh giá
                   </label>
                   <Textarea
-                    placeholder="Nhập ghi chú về đánh giá của bạn (ví dụ: kỹ năng cần cải thiện, điểm mạnh, lý do thay đổi đánh giá...)"
+                    placeholder="Nhập ghi chú về đánh giá của bạn..."
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
                     rows={5}
@@ -690,7 +695,7 @@ export function ReviewsPage() {
         </>
       )}
 
-      {/* ✅ MERGED: New Review Dialog (From V1) */}
+      {/* ✅ New Review Dialog (Feature V1) */}
       {isNewReviewDialogOpen && selectedPendingInterview && (
         <>
           <div
@@ -701,7 +706,7 @@ export function ReviewsPage() {
               setSelectedPendingInterview(null);
               setNewRating(0);
               setNewNote('');
-              setReviewOutcome('Vòng tiếp theo');
+              setReviewOutcome('Đạt');
             }}
           />
 
@@ -718,7 +723,7 @@ export function ReviewsPage() {
                     setSelectedPendingInterview(null);
                     setNewRating(0);
                     setNewNote('');
-                    setReviewOutcome('Vòng tiếp theo');
+                    setReviewOutcome('Đạt');
                   }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -775,7 +780,6 @@ export function ReviewsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                      <SelectItem value="Vòng tiếp theo">Vòng tiếp theo</SelectItem>
                       <SelectItem value="Đạt">Đạt</SelectItem>
                       <SelectItem value="Không đạt">Không đạt</SelectItem>
                     </SelectContent>
@@ -803,7 +807,7 @@ export function ReviewsPage() {
                     setSelectedPendingInterview(null);
                     setNewRating(0);
                     setNewNote('');
-                    setReviewOutcome('Vòng tiếp theo');
+                    setReviewOutcome('Đạt');
                   }}
                   disabled={submitting}
                 >
