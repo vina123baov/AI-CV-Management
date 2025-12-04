@@ -367,32 +367,64 @@ setSubmitting(false);
 
   // Logic Kết thúc sớm (Giống V1 - chuyển sang Đang đánh giá)
   const handleEndInterview = async (interview: Interview) => {
-    if (!confirm(`Bạn có chắc muốn kết thúc sớm buổi phỏng vấn với ${interview.cv_candidates?.full_name}?`)) {
-      return;
-    }
+  if (!confirm(`Bạn có chắc muốn kết thúc sớm buổi phỏng vấn với ${interview.cv_candidates?.full_name}?`)) {
+    return;
+  }
 
-    setSubmitting(true);
-    try {
-      const { error } = await supabase
-        .from('cv_interviews')
-        .update({
-          status: 'Đang đánh giá' // Logic V1
-        })
-        .eq('id', interview.id);
+  setSubmitting(true);
+  try {
+    const { error } = await supabase
+      .from('cv_interviews')
+      .update({
+        status: 'Đang đánh giá'
+      })
+      .eq('id', interview.id);
 
-      if (error) throw error;
-      
-      // Update local state
-      setInterviews(prev => prev.map(i => i.id === interview.id ? { ...i, status: 'Đang đánh giá' } : i));
+    if (error) throw error;
+    
+    setInterviews(prev => prev.map(i => i.id === interview.id ? { ...i, status: 'Đang đánh giá' } : i));
 
-      alert('Buổi phỏng vấn đã được kết thúc và chuyển sang trạng thái chờ đánh giá!');
-    } catch (error) {
-      console.error('Error ending interview:', error);
-      alert('Có lỗi xảy ra khi kết thúc buổi phỏng vấn!');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    alert('Buổi phỏng vấn đã được kết thúc và chuyển sang trạng thái chờ đánh giá!');
+  } catch (error) {
+    console.error('Error ending interview:', error);
+    alert('Có lỗi xảy ra khi kết thúc buổi phỏng vấn!');
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+// ✅ THÊM HÀM MỚI - Phỏng vấn ngay
+const handleStartInterviewNow = async (interview: Interview) => {
+  if (!confirm(`Bạn có chắc muốn bắt đầu phỏng vấn ngay với ${interview.cv_candidates?.full_name}?\n\nLịch phỏng vấn sẽ chuyển sang trạng thái "Đang phỏng vấn".`)) {
+    return;
+  }
+
+  setSubmitting(true);
+  try {
+    const { error } = await supabase
+      .from('cv_interviews')
+      .update({
+        status: 'Đang phỏng vấn',
+        // Có thể cập nhật thời gian bắt đầu thực tế nếu cần
+        // actual_start_time: new Date().toISOString()
+      })
+      .eq('id', interview.id);
+
+    if (error) throw error;
+    
+    // Update local state
+    setInterviews(prev => prev.map(i => 
+      i.id === interview.id ? { ...i, status: 'Đang phỏng vấn' } : i
+    ));
+
+    alert('✓ Đã bắt đầu phỏng vấn! Trạng thái đã chuyển sang "Đang phỏng vấn".');
+  } catch (error) {
+    console.error('Error starting interview:', error);
+    alert('Có lỗi xảy ra khi bắt đầu phỏng vấn!');
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // Submit Review (V1 Logic)
   const handleSubmitReview = async () => {
@@ -550,43 +582,93 @@ setInterviews(prev => prev.map(i =>
   };
 
   const handleSubmitReviewForm = async () => {
-    if (!interviewToReview || reviewData.rating === 0) {
-      alert('Vui lòng chọn số sao đánh giá!');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const { error: reviewError } = await supabase.from('cv_interview_reviews').insert([{
-          interview_id: interviewToReview.id,
-          rating: reviewData.rating,
-          notes: reviewData.notes,
-          outcome: reviewData.outcome
-        }]);
-      if (reviewError) throw reviewError;
+  if (!interviewToReview || reviewData.rating === 0) {
+    alert('Vui lòng chọn số sao đánh giá!');
+    return;
+  }
+  setSubmitting(true);
+  try {
+    // 1. Tạo review
+    const { error: reviewError } = await supabase
+      .from('cv_interview_reviews')
+      .insert([{
+        interview_id: interviewToReview.id,
+        rating: reviewData.rating,
+        notes: reviewData.notes,
+        outcome: reviewData.outcome
+      }]);
+    
+    if (reviewError) throw reviewError;
 
-      const { error: updateError } = await supabase.from('cv_interviews').update({ status: 'Hoàn thành' }).eq('id', interviewToReview.id);
-      if (updateError) throw updateError;
+    // 2. Cập nhật trạng thái interview thành "Hoàn thành"
+    const { error: updateError } = await supabase
+      .from('cv_interviews')
+      .update({ status: 'Hoàn thành' })
+      .eq('id', interviewToReview.id);
+    
+    if (updateError) throw updateError;
 
-      const { data: updatedInterviews } = await supabase
+    // ✅ 3. CẬP NHẬT TRẠNG THÁI ỨNG VIÊN DỰA TRÊN KẾT QUẢ ĐÁNH GIÁ
+    if (reviewData.outcome === 'Đạt' || reviewData.outcome === 'Không đạt') {
+      // Lấy candidate_id từ interview
+      const { data: interviewData } = await supabase
         .from('cv_interviews')
-        .select(`*, cv_candidates!candidate_id (full_name, cv_jobs!job_id ( id, title )), cv_jobs!job_id ( id, title )`)
-        .order('interview_date', { ascending: false });
+        .select('candidate_id')
+        .eq('id', interviewToReview.id)
+        .single();
 
-      if (updatedInterviews) {
-        setInterviews(updatedInterviews.map(i => ({...i, status: getInterviewStatus(i as Interview)})) as Interview[]);
+      if (interviewData?.candidate_id) {
+        const newCandidateStatus = reviewData.outcome === 'Đạt' ? 'Chấp nhận' : 'Từ chối';
+        
+        const { error: candidateUpdateError } = await supabase
+          .from('cv_candidates')
+          .update({ status: newCandidateStatus })
+          .eq('id', interviewData.candidate_id);
+
+        if (candidateUpdateError) {
+          console.error('⚠️ Không thể cập nhật trạng thái ứng viên:', candidateUpdateError);
+          // Không throw để không làm gián đoạn flow chính
+        } else {
+          console.log(`✓ Đã cập nhật trạng thái ứng viên thành: ${newCandidateStatus}`);
+        }
       }
-
-      setIsReviewFormDialogOpen(false);
-      setInterviewToReview(null);
-      setReviewData({ rating: 0, notes: '', outcome: 'Đạt' });
-      alert('Đánh giá đã được lưu thành công!');
-    } catch (error) {
-      console.error('Error submitting review:', error);
-      alert('Có lỗi xảy ra khi lưu đánh giá!');
-    } finally {
-      setSubmitting(false);
     }
-  };
+
+    // 4. Refresh danh sách interviews
+    const { data: updatedInterviews } = await supabase
+      .from('cv_interviews')
+      .select(`
+        *,
+        cv_candidates!candidate_id (
+          full_name,
+          cv_jobs!job_id ( id, title )
+        ),
+        cv_jobs!job_id ( id, title )
+      `)
+      .order('interview_date', { ascending: false });
+
+    if (updatedInterviews) {
+      setInterviews(
+        updatedInterviews.map(i => ({
+          ...i,
+          status: getInterviewStatus(i as Interview)
+        })) as Interview[]
+      );
+    }
+
+    // 5. Reset form và đóng dialog
+    setIsReviewFormDialogOpen(false);
+    setInterviewToReview(null);
+    setReviewData({ rating: 0, notes: '', outcome: 'Đạt' });
+    
+    alert('✓ Đánh giá đã được lưu thành công và trạng thái ứng viên đã được cập nhật!');
+  } catch (error) {
+    console.error('Error submitting review:', error);
+    alert('Có lỗi xảy ra khi lưu đánh giá!');
+  } finally {
+    setSubmitting(false);
+  }
+ };
 
   // --- Render Helpers ---
 
@@ -820,11 +902,23 @@ year: 'numeric', month: '2-digit', day: '2-digit',
                             {/* ✅ MERGED UI: Ẩn các thao tác nếu đã Hoàn thành HOẶC Đã hủy */}
                             {interview.status !== 'Hoàn thành' && interview.status !== 'Đã hủy' && (
                               <>
-                                {interview.status === 'Đang chờ' && (
-                                  <DropdownMenuItem onClick={() => handleEditClick(interview)}>
-                                     Chỉnh sửa
-                                  </DropdownMenuItem>
-                                )}
+                                {/* ✅ Phỏng vấn ngay - KHÔNG CÓ ICON */}
+        {interview.status === 'Đang chờ' && (
+          <>
+            <DropdownMenuItem
+              className="text-green-600 font-medium"
+              onClick={() => handleStartInterviewNow(interview)}
+              disabled={submitting}
+            >
+              Phỏng vấn ngay
+            </DropdownMenuItem>
+            
+            {/* ✅ Chỉnh sửa - KHÔNG CÓ ICON */}
+            <DropdownMenuItem onClick={() => handleEditClick(interview)}>
+              Chỉnh sửa
+            </DropdownMenuItem>
+          </>
+        )}
       
                                 {/* Kết thúc sớm theo logic V1 (Chuyển thành Đang đánh giá) */}
                                 {interview.status === 'Đang phỏng vấn' && (
