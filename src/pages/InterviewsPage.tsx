@@ -88,9 +88,8 @@ export function InterviewsPage() {
     notes: '',
     outcome: 'Đạt'
   });
-const [interviewToReview, setInterviewToReview] = useState<Interview | null>(null);
 
-  // Form state (Create) - Form V2 (Không Round)
+  // Form state
   const [formData, setFormData] = useState({
     candidate_id: "",
     job_id: "",
@@ -274,11 +273,13 @@ id: candidateData.id,
     if (!formData.interview_time) errors.interview_time = "Vui lòng chọn giờ phỏng vấn";
 
     const duration = parseInt(formData.duration);
-    if (!duration || duration < 5) errors.duration = "Thời lượng phỏng vấn tối thiểu là 5 phút";
+    if (!duration || duration < 5) {
+      errors.duration = "Thời lượng phỏng vấn tối thiểu là 5 phút";
+      setFormErrors(errors);
+      return false;
+    }
 
-    const [year, month, day] = formData.interview_date.split('-');
-    const [hours, minutes] = formData.interview_time.split(':');
-const interviewDateTime = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+    const interviewDateTime = new Date(`${formData.interview_date}T${formData.interview_time}`);
     const now = new Date();
 
     if (isNaN(interviewDateTime.getTime())) {
@@ -450,139 +451,12 @@ setSubmitting(false);
 
       if (error) throw error;
 
-      // Update local state (map instead of filter)
-setInterviews(prev => prev.map(i => 
-        i.id === interview.id ? { ...i, status: 'Đã hủy' } : i
-      ));
+      setInterviews(prev => prev.filter(i => i.id !== interview.id));
 
       alert('Đã hủy lịch phỏng vấn thành công!');
     } catch (error) {
       console.error('Error cancelling interview:', error);
       alert('Có lỗi xảy ra khi hủy lịch phỏng vấn!');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // --- ACTIONS EDIT (V2 Logic UI - Bỏ Round) ---
-  const handleEditClick = (interview: Interview) => {
-    const dt = new Date(interview.interview_date);
-    const dateStr = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
-    const timeStr = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
-    const currentJobId = interview.job_id || interview.cv_candidates?.cv_jobs?.id || "";
-
-    setEditFormData({
-      id: interview.id,
-      job_id: currentJobId,
-      interview_date: dateStr,
-      interview_time: timeStr,
-      duration: interview.duration,
-      location: interview.location,
-      format: interview.format,
-      interviewer: interview.interviewer,
-      candidate_name: interview.cv_candidates?.full_name || "Ứng viên"
-    });
-    setFormErrors({ interview_date: "", interview_time: "", duration: "" });
-    setIsEditDialogOpen(true);
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const errors = { interview_date: "", interview_time: "", duration: "" };
-    if (!editFormData.interview_date) errors.interview_date = "Vui lòng chọn ngày";
-    if (!editFormData.interview_time) errors.interview_time = "Vui lòng chọn giờ";
-    const duration = parseInt(editFormData.duration);
-    if (!duration || duration < 5) errors.duration = "Tối thiểu 5 phút";
-    
-    const interviewDateTime = new Date(`${editFormData.interview_date}T${editFormData.interview_time}:00`);
-    const now = new Date();
-    
-    if (isNaN(interviewDateTime.getTime())) errors.interview_date = "Ngày giờ không hợp lệ";
-    if (interviewDateTime <= now) {
-      errors.interview_date = "Thời gian cập nhật phải ở tương lai";
-      errors.interview_time = "Thời gian cập nhật phải ở tương lai";
-    }
-
-    if (errors.interview_date || errors.interview_time || errors.duration) {
-      setFormErrors(errors);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const isoDateTimeString = interviewDateTime.toISOString();
-      const updatePayload: any = {
-        interview_date: isoDateTimeString,
-        duration: editFormData.duration,
-        format: editFormData.format,
-        interviewer: editFormData.interviewer,
-        location: editFormData.location,
-        job_id: editFormData.job_id
-      };
-
-      const { error } = await supabase.from('cv_interviews').update(updatePayload).eq('id', editFormData.id);
-      if (error) throw error;
-
-      const { data: updatedInterviews } = await supabase
-        .from('cv_interviews')
-.select(`*, cv_candidates!candidate_id (full_name, cv_jobs!job_id ( id, title )), cv_jobs!job_id ( id, title )`)
-        .order('interview_date', { ascending: false });
-
-      if (updatedInterviews) {
-        setInterviews(updatedInterviews.map(i => ({...i, status: getInterviewStatus(i as Interview)})) as Interview[]);
-      }
-
-      setIsEditDialogOpen(false);
-      setFormErrors({ interview_date: "", interview_time: "", duration: "" });
-      alert('Cập nhật lịch phỏng vấn thành công!');
-    } catch (error: any) {
-      console.error('❌ Error updating interview:', error);
-      alert(`Có lỗi xảy ra khi cập nhật: ${error.message || 'Unknown error'}`);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // --- ACTIONS REVIEW FORM (V1) ---
-  const handleOpenReviewForm = (interview: Interview) => {
-    setInterviewToReview(interview);
-    setReviewData({ rating: 0, notes: '', outcome: 'Đạt' });
-    setIsReviewFormDialogOpen(true);
-  };
-
-  const handleSubmitReviewForm = async () => {
-    if (!interviewToReview || reviewData.rating === 0) {
-      alert('Vui lòng chọn số sao đánh giá!');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const { error: reviewError } = await supabase.from('cv_interview_reviews').insert([{
-          interview_id: interviewToReview.id,
-          rating: reviewData.rating,
-          notes: reviewData.notes,
-          outcome: reviewData.outcome
-        }]);
-      if (reviewError) throw reviewError;
-
-      const { error: updateError } = await supabase.from('cv_interviews').update({ status: 'Hoàn thành' }).eq('id', interviewToReview.id);
-      if (updateError) throw updateError;
-
-      const { data: updatedInterviews } = await supabase
-        .from('cv_interviews')
-        .select(`*, cv_candidates!candidate_id (full_name, cv_jobs!job_id ( id, title )), cv_jobs!job_id ( id, title )`)
-        .order('interview_date', { ascending: false });
-
-      if (updatedInterviews) {
-        setInterviews(updatedInterviews.map(i => ({...i, status: getInterviewStatus(i as Interview)})) as Interview[]);
-      }
-
-      setIsReviewFormDialogOpen(false);
-      setInterviewToReview(null);
-      setReviewData({ rating: 0, notes: '', outcome: 'Đạt' });
-      alert('Đánh giá đã được lưu thành công!');
-    } catch (error) {
-      console.error('Error submitting review:', error);
-      alert('Có lỗi xảy ra khi lưu đánh giá!');
     } finally {
       setSubmitting(false);
     }
@@ -596,8 +470,7 @@ setInterviews(prev => prev.map(i =>
   const cancelledInterviews = interviews.filter(i => i.status === 'Đã hủy').length;
 
   const filteredInterviews = interviews.filter(interview => {
-    const position = interview.cv_jobs?.title || interview.cv_candidates?.cv_jobs?.title;
-const matchesSearch = 
+    const matchesSearch = 
       interview.cv_candidates?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       position?.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -791,13 +664,13 @@ const matchesSearch =
                       {interview.cv_jobs?.title || interview.cv_candidates?.cv_jobs?.title || 'N/A'}
                     </TableCell>
                     <TableCell>
-                      {(() => {
-                        const date = new Date(interview.interview_date);
-                        return date.toLocaleString('vi-VN', {
-year: 'numeric', month: '2-digit', day: '2-digit',
-                          hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh'
-                        });
-                      })()}
+                      {new Date(interview.interview_date).toLocaleString('vi-VN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
                     </TableCell>
                     <TableCell>{interview.interviewer}</TableCell>
                     <TableCell>
@@ -813,47 +686,27 @@ year: 'numeric', month: '2-digit', day: '2-digit',
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-white">
-                            <DropdownMenuItem onClick={() => handleViewDetail(interview)}>
-                             Xem chi tiết
+                          <DropdownMenuItem onClick={() => handleViewDetail(interview)}>
+                            Xem chi tiết
+                          </DropdownMenuItem>
+                          
+                          {/* Logic V1: Kết thúc sớm */}
+                          {interview.status === 'Đang phỏng vấn' && (
+                            <DropdownMenuItem
+                              className="text-orange-600"
+                              onClick={() => handleEndInterview(interview)}
+                              disabled={submitting}
+                            >
+                              Kết thúc sớm
                             </DropdownMenuItem>
-  
-                            {/* ✅ MERGED UI: Ẩn các thao tác nếu đã Hoàn thành HOẶC Đã hủy */}
-                            {interview.status !== 'Hoàn thành' && interview.status !== 'Đã hủy' && (
-                              <>
-                                {interview.status === 'Đang chờ' && (
-                                  <DropdownMenuItem onClick={() => handleEditClick(interview)}>
-                                     Chỉnh sửa
-                                  </DropdownMenuItem>
-                                )}
-      
-                                {/* Kết thúc sớm theo logic V1 (Chuyển thành Đang đánh giá) */}
-                                {interview.status === 'Đang phỏng vấn' && (
-                                  <DropdownMenuItem
-                                     className="text-orange-600"
-                                     onClick={() => handleEndInterview(interview)}
-                                     disabled={submitting}
-                                   >
-                                     Kết thúc sớm
-                                  </DropdownMenuItem>
-                                )}
-      
-                                {(interview.status === 'Đang đánh giá' || interview.status === 'Đang chờ đánh giá') && (
-                                   <DropdownMenuItem
-                                     className="text-blue-600"
-                                     onClick={() => handleOpenReviewForm(interview)}
-                                   >
-                                      Đánh giá
-                                   </DropdownMenuItem>
-                                 )}
-      
-                                <DropdownMenuItem 
-                                  className="text-red-600"
-onClick={() => handleDelete(interview)}
-                                 >
-                                   Hủy lịch
-                                 </DropdownMenuItem>
-                              </>
-                            )}
+                          )}
+                          
+                          <DropdownMenuItem 
+                            className="text-red-600"
+                            onClick={() => handleDelete(interview)}
+                          >
+                            Hủy lịch
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -904,9 +757,10 @@ onClick={() => handleDelete(interview)}
                             <span className="font-medium text-sm text-gray-600">Có thể thay đổi ứng viên</span>
                             <Button variant="ghost" size="sm" onClick={() => {
                                     setSelectedCandidate(null);
-setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
-                                    setUseDifferentPosition(false);
-                                }} type="button">
+                                    setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
+                                }}
+                                type="button"
+                            >
                                 <X className="w-4 h-4" />
                             </Button>
                         </div>
@@ -924,34 +778,48 @@ setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
                       <p className="text-sm font-medium text-blue-800">Vị trí đang ứng tuyển:</p>
                       <p className="text-base font-semibold text-blue-900">{selectedCandidate.cv_jobs.title}</p>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <input type="checkbox" id="useDifferentPosition" checked={useDifferentPosition}
-                        onChange={(e) => {
-                          setUseDifferentPosition(e.target.checked);
-                          if (!e.target.checked) setFormData(prev => ({ ...prev, job_id: selectedCandidate.cv_jobs?.id || "" }));
-                        }}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <label htmlFor="useDifferentPosition" className="text-sm text-gray-700">Phỏng vấn cho vị trí khác</label>
-                    </div>
-                    {useDifferentPosition && (
-                      <Select value={formData.job_id} onValueChange={(value) => setFormData({...formData, job_id: value})} required>
-                        <SelectTrigger className="bg-white"><SelectValue placeholder="Chọn vị trí phỏng vấn" /></SelectTrigger>
-                        <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                            {jobs.map((job) => (<SelectItem key={job.id} value={job.id}>{job.title}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    )}
                   </div>
                 ) : (
-                  <Select value={formData.job_id} onValueChange={(value) => setFormData({...formData, job_id: value})} required>
-                    <SelectTrigger className="bg-white"><SelectValue placeholder="Chọn vị trí ứng tuyển" /></SelectTrigger>
+                  <Select 
+                    value={formData.job_id}
+                    onValueChange={(value) => setFormData({...formData, job_id: value})}
+                    required
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Chọn vị trí ứng tuyển" />
+                    </SelectTrigger>
                     <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
-                      {jobs.map((job) => (<SelectItem key={job.id} value={job.id}>{job.title}</SelectItem>))}
+                      {jobs.map((job) => (
+                        <SelectItem key={job.id} value={job.id}>
+                          {job.title}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
-</div>
+              </div>
+
+              {/* Vòng phỏng vấn */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <div className="w-4 h-4 rounded-full border-2 border-current" />
+                  Vòng phỏng vấn <span className="text-red-500">*</span>
+                </label>
+                <Select 
+                  value={formData.round} 
+                  onValueChange={(value) => setFormData({...formData, round: value})}
+                  required
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Chọn vòng phỏng vấn" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
+                    <SelectItem value="Vòng 1">Vòng 1 - Sơ tuyển</SelectItem>
+                    <SelectItem value="Vòng 2">Vòng 2 - Chuyên môn</SelectItem>
+                    <SelectItem value="Vòng 3">Vòng 3 - Cuối cùng</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -997,9 +865,17 @@ setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium"><Video className="w-4 h-4" /> Hình thức</label>
-<Select value={formData.format} onValueChange={(value) => setFormData({...formData, format: value})}>
-                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Video className="w-4 h-4" />
+                  Hình thức
+                </label>
+                <Select 
+                  value={formData.format} 
+                  onValueChange={(value) => setFormData({...formData, format: value})}
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
                     <SelectItem value="Trực tiếp">Trực tiếp</SelectItem>
                     <SelectItem value="Online">Online</SelectItem>
@@ -1038,11 +914,16 @@ setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
           <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1000000 }}>
             <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4 pointer-events-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
-                <div>
-                  <h2 className="text-xl font-semibold flex items-center gap-2"><Pencil className="w-5 h-5 text-blue-600" /> Chỉnh sửa lịch phỏng vấn</h2>
-<p className="text-sm text-gray-600 mt-1">Cập nhật thông tin cho lịch phỏng vấn đang chờ.</p>
-                </div>
-                <button onClick={() => setIsEditDialogOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5" /></button>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-blue-600" />
+                  Chi tiết lịch phỏng vấn
+                </h2>
+                <button
+                  onClick={() => setIsDetailDialogOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
               <form onSubmit={handleUpdate} className="p-6 space-y-6">
@@ -1062,49 +943,49 @@ setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
                     <label className="text-sm font-medium">Ngày phỏng vấn <span className="text-red-500">*</span></label>
                     <Input type="date" value={editFormData.interview_date} onChange={(e) => setEditFormData({...editFormData, interview_date: e.target.value})} required className={`${formErrors.interview_date ? "border-red-500" : ""} bg-white`} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Giờ phỏng vấn <span className="text-red-500">*</span></label>
-                    <Input type="time" value={editFormData.interview_time} onChange={(e) => setEditFormData({...editFormData, interview_time: e.target.value})} required className={`${formErrors.interview_time ? "border-red-500" : ""} bg-white`} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Trạng thái</label>
+                    <div className="mt-1">
+                      <Badge className={getStatusBadgeClass(selectedInterview.status)}>
+                        {selectedInterview.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Ngày & Giờ</label>
+                    <p className="mt-1 text-base">
+                      {new Date(selectedInterview.interview_date).toLocaleString('vi-VN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Thời lượng</label>
+                    <p className="mt-1 text-base">{selectedInterview.duration} phút</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Người phỏng vấn</label>
+                    <p className="mt-1 text-base">{selectedInterview.interviewer}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Hình thức</label>
+                    <p className="mt-1 text-base">{selectedInterview.format}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium text-gray-600">Địa điểm</label>
+                    <p className="mt-1 text-base">{selectedInterview.location || 'Chưa có thông tin'}</p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium"><Clock className="w-4 h-4" /> Thời lượng (phút)</label>
-                  <Input type="number" value={editFormData.duration} onChange={(e) => setEditFormData({...editFormData, duration: e.target.value})} placeholder="60" min="5" step="5" className={`${formErrors.duration ? "border-red-500" : ""} bg-white`} />
-                </div>
-                <div className="space-y-2">
-<label className="flex items-center gap-2 text-sm font-medium"><MapPin className="w-4 h-4" /> Địa điểm</label>
-                  <Input value={editFormData.location} onChange={(e) => setEditFormData({...editFormData, location: e.target.value})} placeholder="Phòng họp, địa chỉ, link online" className="bg-white" />
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium"><Video className="w-4 h-4" /> Hình thức</label>
-                  <Select value={editFormData.format} onValueChange={(value) => setEditFormData({...editFormData, format: value})}>
-                    <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-white" style={{ zIndex: 1000001 }}><SelectItem value="Trực tiếp">Trực tiếp</SelectItem><SelectItem value="Online">Online</SelectItem><SelectItem value="Hybrid">Hybrid</SelectItem></SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium"><User className="w-4 h-4" /> Người phỏng vấn <span className="text-red-500">*</span></label>
-                  <Input value={editFormData.interviewer} onChange={(e) => setEditFormData({...editFormData, interviewer: e.target.value})} placeholder="Nhập tên người phỏng vấn" className="bg-white" required />
-                </div>
-                <div className="flex items-center justify-end gap-2 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={submitting}>Hủy</Button>
-                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={submitting}><Pencil className="w-4 h-4 mr-2" /> {submitting ? 'Đang cập nhật...' : 'Cập nhật thay đổi'}</Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </>
-      )}
+              </div>
 
-      {/* Dialog Xem Chi Tiết */}
-      {isDetailDialogOpen && selectedInterview && (
-        <>
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" style={{ zIndex: 999999 }} onClick={() => setIsDetailDialogOpen(false)} />
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1000000 }}>
-            <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4 pointer-events-auto">
-              <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
-                <h2 className="text-xl font-semibold flex items-center gap-2"><Calendar className="w-5 h-5 text-blue-600" /> Chi tiết lịch phỏng vấn</h2>
-<button onClick={() => setIsDetailDialogOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5" /></button>
+              <div className="border-t px-6 py-4 flex justify-end">
+                <Button variant="outline" onClick={() => setIsDetailDialogOpen(false)}>
+                  Đóng
+                </Button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1131,8 +1012,19 @@ setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
           <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1000000 }}>
             <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-lg m-4 pointer-events-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
-<h2 className="text-xl font-semibold flex items-center gap-2"><Star className="w-5 h-5 text-yellow-500" /> Đánh giá buổi phỏng vấn</h2>
-                <button onClick={() => { setIsReviewFormDialogOpen(false); setInterviewToReview(null); setReviewData({ rating: 0, notes: '', outcome: 'Đạt' }); }} className="text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5" /></button>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Star className="w-5 h-5 text-yellow-500" />
+                  Đánh giá buổi phỏng vấn
+                </h2>
+                <button
+                  onClick={() => {
+                    setIsReviewDialogOpen(false);
+                    setReviewData({ rating: 0, notes: '', outcome: 'Vòng tiếp theo' });
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
               <div className="p-6 space-y-6">
                 <div className="bg-gray-50 rounded-lg p-4">
@@ -1166,8 +1058,24 @@ setFormData(prev => ({...prev, candidate_id: "", job_id: ""}));
                 </div>
               </div>
               <div className="border-t px-6 py-4 flex justify-end gap-2">
-<Button variant="outline" onClick={() => { setIsReviewFormDialogOpen(false); setInterviewToReview(null); setReviewData({ rating: 0, notes: '', outcome: 'Đạt' }); }} disabled={submitting}>Hủy</Button>
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSubmitReviewForm} disabled={submitting || reviewData.rating === 0}><Star className="w-4 h-4 mr-2" /> {submitting ? 'Đang lưu...' : 'Lưu đánh giá'}</Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setIsReviewDialogOpen(false);
+                    setReviewData({ rating: 0, notes: '', outcome: 'Vòng tiếp theo' });
+                  }}
+                  disabled={submitting}
+                >
+                  Hủy
+                </Button>
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleSubmitReview}
+                  disabled={submitting || reviewData.rating === 0}
+                >
+                  <Star className="w-4 h-4 mr-2" />
+                  {submitting ? 'Đang lưu...' : 'Lưu đánh giá'}
+                </Button>
               </div>
             </div>
           </div>
