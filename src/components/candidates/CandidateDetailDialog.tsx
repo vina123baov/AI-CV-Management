@@ -51,7 +51,22 @@ const getStatusBadge = (status: string) => {
     </Badge>
   );
 };
-
+const getCandidateStatusBadge = (status: string) => {
+  switch (status) {
+    case "Chấp nhận":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{status}</Badge>
+    case "Từ chối":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">{status}</Badge>
+    case "Phỏng vấn":
+      return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">{status}</Badge>
+    case "Sàng lọc":
+      return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">{status}</Badge>
+    case "Mới":
+      return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">{status}</Badge>
+    default:
+      return <Badge variant="secondary">{status}</Badge>
+  }
+}
 export function CandidateDetailDialog({ candidate, open, onClose }: CandidateDetailDialogProps) {
   if (!candidate) return null;
 
