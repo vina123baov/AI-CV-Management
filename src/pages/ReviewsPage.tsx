@@ -281,7 +281,8 @@ if (!selectedPendingInterview || newRating === 0) {
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedReview.id);
-if (error) throw error;
+
+      if (error) throw error;
 
       // ✅ 2. LOGIC TỪ VERSION 1: CẬP NHẬT TRẠNG THÁI ỨNG VIÊN (Nếu outcome thay đổi)
       if (reviewOutcome === 'Đạt' || reviewOutcome === 'Không đạt') {
@@ -439,7 +440,7 @@ if (error) throw error;
             </TableHeader>
             <TableBody>
               {loading ? (
-<TableRow>
+                <TableRow>
                   <TableCell colSpan={6} className="text-center h-24">Đang tải dữ liệu...</TableCell>
                 </TableRow>
               ) : reviews.length === 0 ? (
@@ -736,7 +737,7 @@ setNewNote('');
                           {reviewOutcome === 'Đạt' 
                             ? '✓ Trạng thái ứng viên sẽ chuyển sang "Chấp nhận"' 
                             : '⚠️ Trạng thái ứng viên sẽ chuyển sang "Từ chối"'
-}
+                          }
                         </p>
                         <p className="text-xs opacity-90">
                            Hệ thống sẽ tự động cập nhật trạng thái ứng viên khi bạn lưu đánh giá.
@@ -877,7 +878,7 @@ onClick={() => {
                     <SelectContent className="bg-white" style={{ zIndex: 1000001 }}>
                       <SelectItem value="Đạt">
                         <div className="flex items-center gap-2">
-<span className="text-green-600">✓</span>
+                          <span className="text-green-600">✓</span>
                           <span>Đạt</span>
                         </div>
                       </SelectItem>

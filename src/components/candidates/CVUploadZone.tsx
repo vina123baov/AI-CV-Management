@@ -1,4 +1,4 @@
-import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X, Server } from 'lucide-react';
+ import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X, Server } from 'lucide-react';
 import { useState, useEffect } from 'react';
 // ✅ FIX: Không cần import CVParserService nữa, dùng trực tiếp cvParser
 import { parseCV, validateCVFile, checkBackendHealth, type ParsedCV } from '@/utils/cvParser';
